@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1f3d1b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Golfy — a pocket golf game with real ball physics and endless procedurally generated courses.">
+  <title>Golfy</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <div id="hud-top">
+      <div class="panel" id="hole-panel">
+        <div class="big" id="hole-title">Hole 1</div>
+        <div class="small" id="hole-sub">Par 4 · 350 m</div>
+      </div>
+      <div class="panel" id="score-panel">
+        <div class="big" id="stroke-label">Shot 1</div>
+        <div class="small" id="score-label">E</div>
+      </div>
+      <div class="panel" id="wind-panel">
+        <canvas id="wind-canvas"></canvas>
+        <div class="small" id="wind-label">0 m/s</div>
+      </div>
+    </div>
+
+    <div id="info-strip"><span id="lie-label">Tee box</span><span class="dot">·</span><span id="dist-label">0 m to pin</span></div>
+
+    <canvas id="minimap" title="Tap to toggle overview"></canvas>
+
+    <div id="side-buttons">
+      <button class="icon-btn" id="btn-menu" aria-label="Menu">☰</button>
+      <button class="icon-btn" id="btn-card" aria-label="Scorecard">▦</button>
+      <button class="icon-btn" id="btn-sound" aria-label="Toggle sound">♪</button>
+    </div>
+
+    <div id="toast"></div>
+    <div id="hint"></div>
+
+    <div id="controls">
+      <div id="aim-row">
+        <button class="aim-btn" id="aim-left" aria-label="Aim left">⟲</button>
+        <div id="club-picker">
+          <button class="club-arrow" id="club-prev" aria-label="Previous club">‹</button>
+          <div id="club-name"><span id="club-title">Driver</span><small id="club-dist">228 m</small></div>
+          <button class="club-arrow" id="club-next" aria-label="Next club">›</button>
+        </div>
+        <button class="aim-btn" id="aim-right" aria-label="Aim right">⟳</button>
+      </div>
+      <button id="swing-btn">HOLD TO SWING</button>
+    </div>
+
+    <div id="loading" class="overlay hidden"><div class="spinner"></div><div id="loading-text">Building hole…</div></div>
+
+    <div id="menu" class="overlay">
+      <div class="card">
+        <h1>Golfy<span class="flag">⛳</span></h1>
+        <p class="tag">Procedural pocket golf</p>
+        <div id="continue-wrap" class="hidden">
+          <button class="primary" id="btn-continue">Continue round</button>
+          <p class="small muted" id="continue-info"></p>
+        </div>
+        <label class="field">Course seed
+          <div class="seed-row">
+            <input id="seed-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="24">
+            <button id="btn-dice" aria-label="Random seed">🎲</button>
+          </div>
+        </label>
+        <p class="course-name" id="course-preview"></p>
+        <button class="primary" id="btn-play">Tee off</button>
+        <details>
+          <summary>How to play</summary>
+          <ul>
+            <li><b>Aim:</b> drag anywhere on the course (or use ⟲ ⟳ for fine tuning).</li>
+            <li><b>Club:</b> tap ‹ › — the best club is picked for you each shot.</li>
+            <li><b>Swing:</b> hold the button for the backswing, release to set power.</li>
+            <li><b>Accuracy:</b> tap again as the marker returns to the white line. Early = slice right, late = hook left.</li>
+            <li>The <span class="pin-chip">pin</span> mark on the meter shows the power needed to carry the flag (wind &amp; slopes not included).</li>
+            <li>Wind, slopes, lie, trees, bunkers and water all matter. Arrows on the green show the slope when putting.</li>
+            <li>Hold the button during a shot to fast-forward.</li>
+            <li>Desktop: mouse to aim, click/space to swing, ←/→ fine aim, ↑/↓ clubs.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <div id="scorecard" class="overlay hidden">
+      <div class="card wide">
+        <h2 id="sc-title">Scorecard</h2>
+        <p class="course-name" id="sc-course"></p>
+        <div id="sc-result"></div>
+        <div class="table-wrap"><table id="sc-table"></table></div>
+        <div class="btn-row" id="sc-buttons"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/util.js"></script>
+  <script src="js/course.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "Golfy",
+  "short_name": "Golfy",
+  "description": "Pocket golf with real ball physics and procedurally generated courses.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#1f3d1b",
+  "theme_color": "#1f3d1b",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
