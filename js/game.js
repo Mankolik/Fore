@@ -55,7 +55,7 @@
     game.topReserve = Math.max(infoRect.bottom, hudRect.bottom) + 6;
     game.bottomReserve = els.controls.getBoundingClientRect().top - 50;
     game.renderer.viewCenterY = (game.topReserve + game.bottomReserve) / 2;
-    els.hint.style.bottom = vh - game.bottomReserve + 8 + 'px';
+    els.hint.style.top = game.topReserve + 4 + 'px'; // hints sit up top so they never cover the ball
     if (game.hole && game.layers) buildMinimap();
   }
   function buildMinimap() {
@@ -163,28 +163,45 @@
   function pickShot(dist) {
     const lie = game.lie;
     const b = game.ball, pin = game.hole.pin;
-    if (lie === T.GREEN) return { club: P.PUTTER, shot: 'full' };
+    if (lie === T.GREEN) return { club: P.PUTTER, shot: 'putt' };
     if ((lie === T.FRINGE || lie === T.FIRST || lie === T.FAIRWAY) && dist < 12 && Math.abs(game.hole.height(b.x, b.y) - game.hole.height(pin.x, pin.y)) < 1.2) {
-      if (sampleLine(b, pin, (t) => t === T.GREEN || t === T.FRINGE || t === T.FIRST || t === T.FAIRWAY)) return { club: P.PUTTER, shot: 'full' };
+      if (sampleLine(b, pin, (t) => t === T.GREEN || t === T.FRINGE || t === T.FIRST || t === T.FAIRWAY)) return { club: P.PUTTER, shot: 'putt' };
     }
     const clearRun = !HAZARD(lie) && sampleLine(b, pin, ROLLABLE);
     const overTrouble = lie === T.SAND || !sampleLine(b, pin, (t) => !HAZARD(t));
-    // From deep rough, trees or sand the woods are a poor choice: suggest irons at most.
-    const noWoods = lie === T.DEEP || lie === T.SAND || lie === T.OOB;
-    const longest = lie === T.TEE ? 0 : noWoods ? 2 : 1;
+    const longest = longestClub();
     let best = null;
     for (let i = longest; i < P.PUTTER; i++) {
       for (const shot of P.shotsFor(i)) {
         if (shot === 'punch') continue; // a deliberate choice, never suggested
-        if (shot === 'chip' && !(clearRun && dist <= 42)) continue;
+        if (shot === 'chip' && !(clearRun && dist <= 45)) continue;
         if (shot === 'flop' && !(overTrouble && dist <= 34)) continue;
-        if (shot === 'pitch' && dist > 70) continue;
+        if (shot === 'three' && dist > 110) continue;
         const m = fullDist(i, shot, lie).metric;
         if (m >= dist * 0.98 && (!best || m < best.m)) best = { club: i, shot, m };
       }
     }
     if (best) return best;
     return { club: longest, shot: 'full' };
+  }
+  // Driver only off the tee; from deep rough, trees or sand the woods are a poor choice too.
+  function longestClub() {
+    const lie = game.lie;
+    if (lie === T.TEE) return 0;
+    return lie === T.DEEP || lie === T.SAND || lie === T.OOB ? 3 : 1;
+  }
+  // Best club for a chosen shot type: the tightest one that still reaches the flag.
+  function bestClubFor(shot) {
+    const dist = distToPin();
+    const list = P.clubsFor(shot);
+    const pool = list.filter((i) => i >= longestClub() || P.CLUBS[i].putter);
+    const cands = pool.length ? pool : list;
+    let best = null;
+    for (const i of cands) {
+      const m = P.CLUBS[i].putter ? Infinity : fullDist(i, shot, game.lie).metric;
+      if (m >= dist * 0.98 && (!best || m < best.m)) best = { i, m };
+    }
+    return best ? best.i : cands[0];
   }
   function sampleLine(a, b, ok) {
     const n = Math.max(12, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 2));
@@ -200,7 +217,8 @@
     const c = P.CLUBS[idx];
     const dist = distToPin();
     game.lieFx = P.lieEffect(game.lie, idx);
-    if (!P.shotsFor(idx).includes(game.shot)) game.shot = 'full';
+    if (!P.shotAllowed(idx, game.shot)) game.shot = P.shotsFor(idx)[0];
+    syncShotRow();
     if (c.putter) {
       game.putterRange = clamp(Math.ceil((dist * 1.3) / 5) * 5, 5, 40);
       game.lieFull = game.putterRange;
@@ -225,28 +243,56 @@
         }
         game.pinPower = (lo + hi) / 2;
       }
-      const shots = P.shotsFor(idx);
-      els.clubTitle.textContent = shots.length > 1 ? `${c.name} · ${P.SHOTS[game.shot].name} ▾` : c.name;
+      els.clubTitle.textContent = c.name;
       els.clubDist.textContent = `${Math.round(game.lieFull)} m ${game.metric}${game.lieFx.label ? ' (' + game.lieFx.label + ')' : ''}`;
       game.showSlopes = false;
     }
     updateGuide();
   }
 
+  // Club arrows step through the clubs that can play the selected shot type, so the shot never resets.
   function changeClub(d) {
     if (game.phase !== 'aim') return;
-    game.clubIdx = (game.clubIdx + d + P.CLUBS.length) % P.CLUBS.length;
+    const list = P.clubsFor(game.shot);
+    if (list.length < 2) return;
+    const at = list.indexOf(game.clubIdx);
+    game.clubIdx = list[(at + d + list.length) % list.length];
     updateClub();
     audio.play('tick');
   }
-  function cycleShot() {
-    if (game.phase !== 'aim') return;
-    const shots = P.shotsFor(game.clubIdx);
-    if (shots.length < 2) return;
-    game.shot = shots[(shots.indexOf(game.shot) + 1) % shots.length];
+  function setShot(shot) {
+    if (game.phase !== 'aim' || !P.SHOTS[shot]) return;
+    game.shot = shot;
+    if (!P.shotAllowed(game.clubIdx, shot)) game.clubIdx = bestClubFor(shot);
     updateClub();
-    setHint(`${P.SHOTS[game.shot].name}: ${P.SHOTS[game.shot].desc}`);
+    setHint(`${P.SHOTS[shot].name}: ${P.SHOTS[shot].desc}`);
     audio.play('tick');
+  }
+  function cycleShot() {
+    const order = P.SHOT_ORDER;
+    setShot(order[(order.indexOf(game.shot) + 1) % order.length]);
+  }
+  const shotButtons = {};
+  function buildShotRow() {
+    const row = $('shot-row');
+    for (const shot of P.SHOT_ORDER) {
+      const b = document.createElement('button');
+      b.className = 'shot-btn';
+      b.type = 'button';
+      b.textContent = P.SHOTS[shot].name;
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-label', P.SHOTS[shot].desc);
+      b.addEventListener('click', () => setShot(shot));
+      row.append(b);
+      shotButtons[shot] = b;
+    }
+  }
+  function syncShotRow() {
+    for (const shot in shotButtons) {
+      const on = shot === game.shot;
+      shotButtons[shot].classList.toggle('active', on);
+      shotButtons[shot].setAttribute('aria-checked', on ? 'true' : 'false');
+    }
   }
 
   function updateGuide() {
@@ -598,8 +644,8 @@
     if (c.putter) D = Math.max(dist * 1.6, 8);
     else D = clamp(Math.min(game.lieFull * 1.12, dist + 30), 30, 400);
     const dx = (hole.pin.x - b.x) / (dist || 1), dy = (hole.pin.y - b.y) / (dist || 1);
-    const scale = Math.min((usableH * 0.92) / D, (vw * 1.5) / D) * game.userZoom;
-    return { x: b.x + dx * D * 0.42, y: b.y + dy * D * 0.42, scale: clamp(scale, 0.6, 70) };
+    const scale = Math.min((usableH * 0.84) / D, (vw * 1.5) / D) * game.userZoom;
+    return { x: b.x + dx * D * 0.36, y: b.y + dy * D * 0.36, scale: clamp(scale, 0.6, 70) };
   }
   function snapCamera() {
     const t = cameraTarget();
@@ -662,7 +708,10 @@
     const enabled = ['aim', 'backswing', 'downswing', 'flight'].includes(game.phase);
     if (els.swing.disabled === enabled) els.swing.disabled = !enabled;
     const clubOk = game.phase === 'aim';
-    els.clubPrev.disabled = els.clubNext.disabled = !clubOk;
+    if (els.clubPrev.disabled === clubOk) {
+      els.clubPrev.disabled = els.clubNext.disabled = !clubOk;
+      for (const k in shotButtons) shotButtons[k].disabled = !clubOk;
+    }
   }
 
   let toastTimer = null;
@@ -962,7 +1011,6 @@
   holdAim(els.aimRight, 1);
 
   els.clubPrev.addEventListener('click', () => changeClub(-1));
-  $('club-name').addEventListener('click', cycleShot);
   els.clubNext.addEventListener('click', () => changeClub(1));
   els.minimap.addEventListener('click', () => {
     game.overview = !game.overview;
@@ -1045,6 +1093,7 @@
   // Boot
   const params = new URLSearchParams(location.search);
   els.seed.value = params.get('seed') || randomSeed();
+  buildShotRow();
   resize();
   showMenu();
   requestAnimationFrame((t) => {

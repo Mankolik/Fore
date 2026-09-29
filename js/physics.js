@@ -10,46 +10,60 @@
   const CUP_R = 0.09; // generous capture radius for the ball centre
   const DT = 1 / 240;
 
-  // speed (m/s), launch angle (deg), lift coefficient from backspin, bite on landing.
+  // speed (m/s), launch angle (deg), lift coefficient from backspin, bite on landing, chip speed (m/s).
+  // Speeds are solved for typical carries; chip speeds for bump-and-run totals (see tests/run.js).
   const CLUBS = [
-    { id: 'DR', name: 'Driver', speed: 70.5, launch: 11.5, lift: 0.21, bite: 0.1 },
-    { id: '3W', name: '3 Wood', speed: 64.3, launch: 13, lift: 0.22, bite: 0.15 },
-    { id: '4I', name: '4 Iron', speed: 58.2, launch: 15.5, lift: 0.22, bite: 0.25 },
-    { id: '6I', name: '6 Iron', speed: 52.9, launch: 18, lift: 0.23, bite: 0.35 },
-    { id: '8I', name: '8 Iron', speed: 46.9, launch: 22, lift: 0.25, bite: 0.5 },
-    { id: 'PW', name: 'P Wedge', speed: 39.8, launch: 27, lift: 0.27, bite: 0.7 },
-    { id: 'GW', name: 'G Wedge', speed: 36.2, launch: 30.5, lift: 0.275, bite: 0.8 },
-    { id: 'SW', name: 'S Wedge', speed: 32.4, launch: 34, lift: 0.28, bite: 0.9 },
-    { id: 'LW', name: 'L Wedge', speed: 28.8, launch: 40, lift: 0.29, bite: 1.0 },
-    { id: 'PT', name: 'Putter', putter: true },
+    { id: 'DR', name: 'Driver', short: 'Dr', speed: 70.52, launch: 11.5, lift: 0.21, bite: 0.1 },
+    { id: '3W', name: '3 Wood', short: '3W', speed: 64.29, launch: 13, lift: 0.22, bite: 0.15 },
+    { id: '5W', name: '5 Wood', short: '5W', speed: 60.85, launch: 14.5, lift: 0.22, bite: 0.2 },
+    { id: '3H', name: '3 Hybrid', short: '3H', speed: 58.84, launch: 15, lift: 0.22, bite: 0.22, rescue: true, chip: 13.5 },
+    { id: '4H', name: '4 Hybrid', short: '4H', speed: 56.41, launch: 16, lift: 0.225, bite: 0.25, rescue: true, chip: 13.16 },
+    { id: '5I', name: '5 Iron', short: '5i', speed: 54.04, launch: 16.5, lift: 0.225, bite: 0.3, chip: 12.95 },
+    { id: '6I', name: '6 Iron', short: '6i', speed: 51.14, launch: 18, lift: 0.23, bite: 0.35, chip: 12.63 },
+    { id: '7I', name: '7 Iron', short: '7i', speed: 48.06, launch: 20, lift: 0.24, bite: 0.42, chip: 12.34 },
+    { id: '8I', name: '8 Iron', short: '8i', speed: 45.2, launch: 22, lift: 0.25, bite: 0.5, chip: 11.9 },
+    { id: '9I', name: '9 Iron', short: '9i', speed: 42, launch: 24.5, lift: 0.26, bite: 0.6, chip: 11.5 },
+    { id: 'PW', name: 'Pitching Wedge', short: 'PW', speed: 38.98, launch: 27, lift: 0.27, bite: 0.7, chip: 11.07 },
+    { id: '52', name: '52° Wedge', short: '52°', speed: 35.63, launch: 31, lift: 0.275, bite: 0.8, chip: 14.07 },
+    { id: '56', name: '56° Wedge', short: '56°', speed: 32.41, launch: 34, lift: 0.28, bite: 0.9, chip: 13.11, flop: true, sand: true },
+    { id: '60', name: '60° Wedge', short: '60°', speed: 29.27, launch: 39, lift: 0.29, bite: 1.0, chip: 11.44, flop: true, sand: true },
+    { id: 'PT', name: 'Putter', short: 'Pt', putter: true },
   ];
   const PUTTER = CLUBS.length - 1;
-  const WEDGES = ['PW', 'GW', 'SW', 'LW'];
 
-  // Shot types reshape a club's trajectory.  Chips are metered by total distance (carry + roll).
+  // Shot types reshape a club's trajectory.  Chips and punches are metered by total distance (carry + roll).
   const SHOTS = {
     full: { name: 'Full', desc: 'Full swing' },
-    pitch: { name: 'Pitch', desc: 'Soft ¾ swing', speed: 0.7, launch: 1.08, lift: 1, bite: 1.1 },
+    three: { name: '¾', desc: 'Controlled ¾ swing', speed: 0.7, launch: 1.08, lift: 1, bite: 1.1 },
     chip: { name: 'Chip', desc: 'Low bump & run', launch: 0.75, lift: 0.6, bite: 0.35, metric: 'total', surface: 'green' },
     flop: { name: 'Flop', desc: 'High & soft', speed: 0.62, launchAbs: 54, lift: 1.1, bite: 1.5 },
     punch: { name: 'Punch', desc: 'Low under trees', speed: 0.8, launch: 0.45, lift: 0.4, bite: 0.4, metric: 'total', surface: 'fairway' },
+    putt: { name: 'Putt', desc: 'Roll it', metric: 'total' },
   };
-  function shotsFor(clubIdx) {
+  const SHOT_ORDER = ['full', 'three', 'chip', 'flop', 'punch', 'putt'];
+  function shotAllowed(clubIdx, shot) {
     const c = CLUBS[clubIdx];
-    if (c.putter) return ['full'];
-    if (c.id === 'DR' || c.id === '3W') return ['full'];
-    if (c.id === '4I' || c.id === '6I') return ['full', 'punch'];
-    if (c.id === '8I') return ['full', 'punch', 'chip'];
-    if (c.id === 'PW' || c.id === 'GW') return ['full', 'pitch', 'chip', 'punch'];
-    return ['full', 'pitch', 'chip', 'flop'];
+    if (c.putter) return shot === 'putt';
+    switch (shot) {
+      case 'full': return true;
+      case 'three':
+      case 'punch': return c.id !== 'DR';
+      case 'chip': return c.chip != null;
+      case 'flop': return !!c.flop;
+      default: return false;
+    }
   }
-  // Chip speeds per club, tuned for bump-and-run totals of roughly 40/32/28/24/18 m.
-  const CHIP_SPEED = { '8I': 16.76, PW: 14.99, GW: 14.07, SW: 13.11, LW: 11.46 };
+  function shotsFor(clubIdx) {
+    return SHOT_ORDER.filter((s) => shotAllowed(clubIdx, s));
+  }
+  function clubsFor(shot) {
+    return CLUBS.map((_, i) => i).filter((i) => shotAllowed(i, shot));
+  }
   function shotParams(clubIdx, shot) {
     const c = CLUBS[clubIdx];
     const m = SHOTS[shot] || SHOTS.full;
     return {
-      speed: shot === 'chip' ? CHIP_SPEED[c.id] : c.speed * (m.speed ?? 1),
+      speed: shot === 'chip' ? c.chip : c.speed * (m.speed ?? 1),
       surface: m.surface || 'green',
       launch: m.launchAbs ?? c.launch * (m.launch ?? 1),
       lift: c.lift * (m.lift ?? 1),
@@ -77,11 +91,12 @@
     const c = CLUBS[club];
     if (c.putter) return { speed: 1, spin: 0, error: terrain === T.GREEN || terrain === T.FRINGE ? 1 : 1.4, label: '' };
     switch (terrain) {
-      case T.ROUGH: return { speed: 0.88, spin: 0.6, error: 1.3, label: '-12%' };
+      // Hybrids glide through long grass better than irons.
+      case T.ROUGH: return c.rescue ? { speed: 0.94, spin: 0.7, error: 1.15, label: '-6%' } : { speed: 0.88, spin: 0.6, error: 1.3, label: '-12%' };
       case T.DEEP:
-      case T.OOB: return { speed: 0.72, spin: 0.4, error: 1.7, label: '-28%' };
+      case T.OOB: return c.rescue ? { speed: 0.82, spin: 0.5, error: 1.4, label: '-18%' } : { speed: 0.72, spin: 0.4, error: 1.7, label: '-28%' };
       case T.SAND:
-        return c.id === 'SW' || c.id === 'LW' ? { speed: 0.85, spin: 0.5, error: 1.3, label: '-15%' } : { speed: 0.62, spin: 0.4, error: 1.6, label: '-38%' };
+        return c.sand ? { speed: 0.85, spin: 0.5, error: 1.3, label: '-15%' } : { speed: 0.62, spin: 0.4, error: 1.6, label: '-38%' };
       case T.FIRST: return { speed: 0.96, spin: 0.85, error: 1.1, label: '-4%' };
       case T.TEE: return { speed: 1, spin: 1, error: 1, label: '' };
       default:
@@ -154,6 +169,7 @@
   // Power in the meter is linear in the shot's distance metric; invert the table to find the speed fraction.
   function speedFractionForPower(clubIdx, power, shot = 'full') {
     const t = shotTable(clubIdx, shot);
+    if (power === 1) return 1;
     const target = clamp(power, 0, 1.1) * t[t.length - 1];
     for (let i = 1; i < t.length; i++) {
       if (t[i] >= target) return (i - 1 + (target - t[i - 1]) / (t[i] - t[i - 1])) / 40;
@@ -427,8 +443,8 @@
   }
 
   Golf.physics = {
-    G, CUP_R, CLUBS, PUTTER, SURF, SHOTS, WEDGES,
-    lieEffect, carryTable, shotTable, fullCarry, speedFractionForPower, flatCarry, shotsFor, shotParams, shotDistance,
+    G, CUP_R, CLUBS, PUTTER, SURF, SHOTS, SHOT_ORDER,
+    lieEffect, carryTable, shotTable, fullCarry, speedFractionForPower, flatCarry, shotsFor, clubsFor, shotAllowed, shotParams, shotDistance,
     createBall, launch, step,
   };
 })();

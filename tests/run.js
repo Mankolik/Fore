@@ -42,7 +42,7 @@ const flat = {
 let prev = Infinity;
 for (let i = 0; i < P.PUTTER; i++) {
   const carry = P.fullCarry(i);
-  check(carry < prev - 10, `${P.CLUBS[i].name} carries less than the previous club (${carry.toFixed(0)})`);
+  check(carry < prev - 5, `${P.CLUBS[i].name} carries less than the previous club (${carry.toFixed(0)})`);
   prev = carry;
   const b = P.createBall(2000, 3900, flat);
   P.launch(b, flat, i, 0.5, 0, -Math.PI / 2);
@@ -53,6 +53,22 @@ for (let i = 0; i < P.PUTTER; i++) {
   check(Math.abs(landed - carry / 2) < 3, `${P.CLUBS[i].name}: half power carries half distance (${landed.toFixed(1)} vs ${(carry / 2).toFixed(1)})`);
 }
 check(Math.abs(P.fullCarry(0) - 228) < 5, 'driver carries ~228 m');
+check(P.CLUBS.length === 15 && P.CLUBS.some((c) => c.id === '52') && P.CLUBS.some((c) => c.id === '4H'), 'full bag incl. hybrids and 52/56/60 wedges');
+
+// Every shot type is playable with at least one club, and chips/punches are metered by total distance.
+for (const shot of P.SHOT_ORDER) check(P.clubsFor(shot).length > 0, `${shot} has clubs`);
+check(P.clubsFor('putt').length === 1 && P.clubsFor('putt')[0] === P.PUTTER, 'only the putter putts');
+check(P.clubsFor('flop').every((i) => P.CLUBS[i].flop), 'flop only with high-loft wedges');
+{
+  let prevTotal = Infinity;
+  for (const i of P.clubsFor('chip')) {
+    const d = P.shotDistance(i, 'chip', T.FAIRWAY, 1);
+    check(d.total < prevTotal && d.carry < d.total * 0.7, `${P.CLUBS[i].name} chip carries ${d.carry.toFixed(0)} and runs to ${d.total.toFixed(0)} m`);
+    prevTotal = d.total;
+  }
+  const hy = P.CLUBS.findIndex((c) => c.id === '4H'), ir = P.CLUBS.findIndex((c) => c.id === '5I');
+  check(P.lieEffect(T.ROUGH, hy).speed > P.lieEffect(T.ROUGH, ir).speed, 'hybrids come out of the rough better than irons');
+}
 
 // Sidespin: a positive error curves the ball right of the target line.
 {

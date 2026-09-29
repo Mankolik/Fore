@@ -134,7 +134,7 @@ button {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(190px + var(--safe-bottom));
+  top: 120px;
   background: var(--panel);
   border-radius: 999px;
   padding: 5px 12px;
@@ -159,6 +159,30 @@ button {
   pointer-events: none;
 }
 #controls > * { pointer-events: auto; }
+#shot-row {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  max-width: 460px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 13px;
+}
+.shot-btn {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 0 2px;
+}
+.shot-btn:active { background: rgba(255, 255, 255, 0.12); }
+.shot-btn.active { background: linear-gradient(#ffe066, var(--accent-dark)); color: #2b2300; }
+.shot-btn:disabled { opacity: 0.5; }
 #aim-row { display: flex; gap: 8px; align-items: stretch; width: 100%; max-width: 460px; }
 .aim-btn {
   flex: 0 0 52px;
@@ -189,13 +213,11 @@ button {
   font-weight: 700;
   font-size: 16px;
   line-height: 1.15;
-  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   touch-action: manipulation;
 }
-#club-name:active { background: rgba(255, 255, 255, 0.12); }
 #club-name small { display: block; font-weight: 500; font-size: 12px; color: var(--muted); }
 
 #swing-btn {
