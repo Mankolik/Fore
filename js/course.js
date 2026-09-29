@@ -152,7 +152,11 @@
     hole.number = number;
 
     // --- Routing: control points heading "up" the screen (negative y).
-    const lenRange = par === 3 ? [125, 190] : par === 4 ? [300, 400] : [450, 520];
+    // Short par 3s and drivable par 4s give plenty of wedge play.
+    let lenRange;
+    if (par === 3) lenRange = rng.chance(0.4) ? [90, 130] : [130, 195];
+    else if (par === 4) lenRange = rng.chance(0.3) ? [255, 300] : [300, 410];
+    else lenRange = [450, 530];
     const total = rng.float(lenRange[0], lenRange[1]);
     let heading = rng.float(-0.3, 0.3); // radians clockwise from north
     const ctrl = [{ x: 0, y: 0 }];
@@ -209,17 +213,32 @@
     const teeP = pointAt(path, 0);
     hole.tee = { x: teeP.x, y: teeP.y, dx: teeP.dx, dy: teeP.dy };
     const endP = pointAt(path, S);
-    const greenR = par === 3 ? rng.float(11, 14) : rng.float(12.5, 17);
+    const greenR = par === 3 ? rng.float(9, 14) : rng.float(10, 18);
     const green = makeBlob(rng, endP.x, endP.y, greenR, { wobble: 0.14, sx: rng.float(1, 1.3) });
     hole.green = green;
     hole.approachDir = { x: endP.dx, y: endP.dy };
+    const greenExtR = greenR * green.sx * 1.15;
+
+    // Green complex: raised greens with run-off banks, two tiers, grass hollows around the edge.
+    const style = { raise: 0, bank: rng.float(4, 7), tier: null, hollows: [] };
+    if (rng.chance(0.4)) style.raise = rng.float(0.8, 2.0);
+    if (rng.chance(0.35)) {
+      const a = rng.float(0, Math.PI * 2);
+      style.tier = { nx: Math.cos(a), ny: Math.sin(a), off: rng.float(-0.3, 0.3) * greenR, h: rng.float(0.4, 0.75) * rng.sign() };
+    }
+    for (let i = 0, n = rng.int(0, 2); i < n; i++) {
+      const a = rng.float(0, Math.PI * 2), d = greenExtR + rng.float(3, 7);
+      style.hollows.push({ x: green.cx + Math.cos(a) * d, y: green.cy + Math.sin(a) * d, r: rng.float(4, 6.5), depth: rng.float(0.5, 1.0) });
+    }
+    hole.greenStyle = style;
+    const onTierSlope = (x, y) => style.tier && Math.abs((x - green.cx) * style.tier.nx + (y - green.cy) * style.tier.ny - style.tier.off) < 2.6;
 
     // Pin somewhere comfortably inside the green.
     let pin = null;
     for (let tries = 0; tries < 40 && !pin; tries++) {
       const a = rng.float(0, Math.PI * 2), r = rng.float(0, greenR * 0.65);
       const px = green.cx + Math.cos(a) * r, py = green.cy + Math.sin(a) * r;
-      if (blobSdf(green, px, py) < -3.5) pin = { x: px, y: py };
+      if (blobSdf(green, px, py) < -3.5 && !onTierSlope(px, py)) pin = { x: px, y: py };
     }
     hole.pin = pin || { x: green.cx, y: green.cy };
 
@@ -233,6 +252,15 @@
       const gr = greenR * 1.05;
       const d = gr + R * 0.9 + 2.5;
       bunkers.push(makeBlob(rng, green.cx + Math.cos(ang) * d, green.cy + Math.sin(ang) * d, R, { sx: rng.float(1.4, 2.0), rot: ang + Math.PI / 2, wobble: 0.2 }));
+    }
+    // Small, deep pot bunkers hugging the green.
+    for (let i = 0, n = rng.chance(0.45) ? rng.int(1, 3) : 0; i < n; i++) {
+      const ang = rng.float(0, Math.PI * 2);
+      const R = rng.float(1.8, 2.8);
+      const d = greenExtR + R + rng.float(0.8, 2);
+      const pot = makeBlob(rng, green.cx + Math.cos(ang) * d, green.cy + Math.sin(ang) * d, R, { sx: rng.float(1, 1.25), wobble: 0.1 });
+      pot.depth = rng.float(1.0, 1.4);
+      bunkers.push(pot);
     }
     if (par >= 4) {
       const nFw = rng.int(1, 3);
@@ -286,6 +314,21 @@
         const creek = { pts, hw: rng.float(2.6, 3.8) };
         const sdf = (x, y) => polylineDist(creek.pts, x, y) - creek.hw;
         if (safeWater(sdf)) creeks.push(creek);
+      }
+    }
+    // Water tight to the side or back of the green.
+    if (waters.length === 0 && rng.chance(par === 3 ? 0.35 : 0.3)) {
+      const base = Math.atan2(-endP.dy, -endP.dx);
+      for (let t = 0; t < 10; t++) {
+        const ang = base + rng.sign() * rng.float(1.2, 2.9);
+        const R = rng.float(9, 16), sx = rng.float(1.3, 1.8);
+        const d = greenExtR + R * rng.float(0.9, 1.3) + rng.float(3, 6);
+        const b = makeBlob(rng, green.cx + Math.cos(ang) * d, green.cy + Math.sin(ang) * d, R, { sx, rot: ang + Math.PI / 2, wobble: 0.18 });
+        const sdf = (x, y) => blobSdf(b, x, y);
+        if (sdf(green.cx, green.cy) > greenExtR + 3 && sdf(hole.pin.x, hole.pin.y) > 7 && sdf(hole.tee.x, hole.tee.y) > 22) {
+          waters.push(b);
+          break;
+        }
       }
     }
     hole.waters = waters;
@@ -373,10 +416,13 @@
         const qx = Math.abs(lx + 2) - 8, qy = Math.abs(ly) - 4.5;
         fTee[k] = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - 1;
 
-        let sand = 99;
+        let sand = 99, sandDepth = 0.55;
         for (let b = 0; b < bunkers.length; b++) {
           const bb = bunkers[b];
-          if (Math.abs(x - bb.cx) < bunkerExt[b] + 6 && Math.abs(y - bb.cy) < bunkerExt[b] + 6) sand = Math.min(sand, blobSdf(bb, x, y));
+          if (Math.abs(x - bb.cx) < bunkerExt[b] + 6 && Math.abs(y - bb.cy) < bunkerExt[b] + 6) {
+            const v = blobSdf(bb, x, y);
+            if (v < sand) { sand = v; sandDepth = bb.depth || 0.55; }
+          }
         }
         fSand[k] = sand;
         let water = 99;
@@ -399,7 +445,18 @@
           h = lerp(h, gh, 1 - smoothstep(-1, 14, fGreen[k]));
         }
         if (fTee[k] < 7) h = lerp(h, hTee, 1 - smoothstep(0, 7, fTee[k]));
-        h -= 0.55 * smoothstep(0.6, -2.5, sand);
+        if (fGreen[k] < 16) {
+          if (style.raise) h += style.raise * (1 - smoothstep(-0.5, style.bank, fGreen[k]));
+          if (style.tier) {
+            const tt = (x - green.cx) * style.tier.nx + (y - green.cy) * style.tier.ny - style.tier.off;
+            h += style.tier.h * (smoothstep(-1.8, 1.8, tt) - 0.5) * (1 - smoothstep(-1, 10, fGreen[k]));
+          }
+        }
+        for (const hw of style.hollows) {
+          const d2 = (x - hw.x) ** 2 + (y - hw.y) ** 2;
+          if (d2 < hw.r * hw.r * 4) h -= hw.depth * Math.exp(-d2 / (hw.r * hw.r));
+        }
+        h -= sandDepth * smoothstep(0.6, sandDepth > 0.8 ? -1.2 : -2.5, sand);
         h -= 1.2 * smoothstep(1, -4, water);
         fHeight[k] = h;
       }

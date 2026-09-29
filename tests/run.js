@@ -25,7 +25,7 @@ for (const seed of seeds) {
     check(h.terrainAt(h.pin.x, h.pin.y) === T.GREEN, `${tag}: pin is on the green`);
     check(h.sampleIdx(h.fGreen, h.pin.x, h.pin.y) < -2, `${tag}: pin away from green edge`);
     check(h.sampleIdx(h.fWater, h.tee.x, h.tee.y) > 15, `${tag}: no water on the tee`);
-    const lens = { 3: [110, 210], 4: [290, 420], 5: [440, 540] }[h.par];
+    const lens = { 3: [85, 210], 4: [245, 420], 5: [440, 545] }[h.par];
     check(h.length >= lens[0] && h.length <= lens[1], `${tag}: par ${h.par} length ${h.length.toFixed(0)}`);
     for (const t of h.trees) {
       const terr = h.terrainAt(t.x, t.y);

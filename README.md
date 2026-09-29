@@ -13,7 +13,7 @@ static web server.
 
 **Controls (touch)**
 - **Aim:** drag anywhere on the course. Use ⟲ ⟳ for fine adjustment (hold to repeat).
-- **Club:** ‹ › (a sensible club is picked automatically for each shot).
+- **Club & shot:** ‹ › changes club; tap the club name (▾) to switch shot type: Full, Pitch, Chip (bump & run, metered by total distance incl. roll), Flop or Punch. A sensible club and shot are suggested each time.
 - **Swing:** hold **SWING** for the backswing and release to set power. Then tap
   again as the marker crosses the white line. Early = push/slice right, late = pull/hook left.
 - The red **pin** mark on the meter is the power that carries the flag in calm air on flat ground.
@@ -38,10 +38,11 @@ wheel to zoom, `V` for overview, `C` for the scorecard, `M` to mute.
 ## Course generation
 
 Each hole comes from a seed: a routed centreline with doglegs becomes a variable-width
-fairway, then a blob-shaped green with a random pin, greenside and fairway bunkers,
+fairway, then a blob-shaped green complex (raised greens with run-off banks, two-tier greens, grass hollows)
+with a random pin, greenside, fairway and deep pot bunkers, water tight to some greens,
 ponds and creeks (kept clear of tees and greens), fractal-noise elevation with tilted
 and undulating greens, clustered forests, deep rough and OOB stakes. A course is 9 holes
-at par 36. Terrain is rasterised once per hole with hill shading, plus a high-resolution
+at par 36, mixing short par 3s and drivable par 4s with long holes. Terrain is rasterised once per hole with hill shading, plus a high-resolution
 layer around the green.
 
 ## Code layout

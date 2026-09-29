@@ -21,7 +21,9 @@
   };
 
   const BACKSWING_TIME = 1.05; // seconds from address to full power
-  const RETURN_SPEED = 1.4; // meter units per second on the way back
+  // The marker returns to the line in about the same time for every swing (0.5 s for a tap-in, 0.72 s at
+  // full power), so short shots get a slower marker and a wider timing window rather than a frantic one.
+  const RETURN_TIME = (p) => 0.5 + 0.22 * p;
   const OVERSHOOT = -0.16; // how far past the line the marker travels before a forced mishit
   const SWEET = 0.02; // half-width of the perfect window
   const TOP_ANGLE = 3.7; // club angle at the top of a full backswing (radians)
@@ -31,7 +33,7 @@
   const game = {
     course: null, holeIdx: 0, hole: null, layers: null, minimap: null,
     ball: null, strokes: 0, scores: [], phase: 'menu', inRound: false,
-    aim: 0, clubIdx: 0, putterRange: 10,
+    aim: 0, clubIdx: 0, shot: 'full', metric: 'carry', carryRatio: 1, returnSpeed: 1.4, putterRange: 10,
     power: 0, marker: 0, lockedPower: 0, topHold: 0, error: 0,
     clubAngle: 0, strikeT: 0, followT: 0, carryShown: false,
     cam: { x: 0, y: 0, scale: 3 }, flightScale: 3, userZoom: 1, overview: false,
@@ -121,7 +123,9 @@
     game.lie = hole.terrainAt(b.x, b.y);
     const dist = distToPin();
     game.aim = Math.atan2(hole.pin.y - b.y, hole.pin.x - b.x);
-    game.clubIdx = pickClub(dist);
+    const pick = pickShot(dist);
+    game.clubIdx = pick.club;
+    game.shot = pick.shot;
     game.phase = 'aim';
     game.power = 0;
     game.clubAngle = 0;
@@ -137,38 +141,53 @@
     return Math.hypot(p.x - b.x, p.y - b.y);
   }
 
-  const carryCache = new Map();
-  function carryFor(clubIdx, lie, power) {
-    const c = P.CLUBS[clubIdx];
-    const le = P.lieEffect(lie, clubIdx);
-    const launch = c.launch + (lie === T.SAND ? 4 : 0);
-    return P.flatCarry(c.speed * P.speedFractionForPower(clubIdx, power) * le.speed, launch, c.lift * (0.6 + 0.4 * le.spin));
+  // Lie-adjusted distance for a club/shot: carry, or total (carry + roll) for chips and punches.
+  const distCache = new Map();
+  function metricAt(clubIdx, shot, lie, power) {
+    const r = P.shotDistance(clubIdx, shot, lie, power);
+    return P.shotParams(clubIdx, shot).metric === 'total' ? r.total : r.carry;
   }
-  function lieFullCarry(clubIdx, lie) {
-    const key = clubIdx * 100 + lie;
-    if (!carryCache.has(key)) carryCache.set(key, carryFor(clubIdx, lie, 1));
-    return carryCache.get(key);
+  function fullDist(clubIdx, shot, lie) {
+    const key = `${clubIdx}:${shot}:${lie}`;
+    if (!distCache.has(key)) {
+      const r = P.shotDistance(clubIdx, shot, lie, 1);
+      distCache.set(key, { carry: r.carry, total: r.total, metric: P.shotParams(clubIdx, shot).metric === 'total' ? r.total : r.carry });
+    }
+    return distCache.get(key);
   }
 
-  function pickClub(dist) {
+  const ROLLABLE = (t) => t === T.GREEN || t === T.FRINGE || t === T.FIRST || t === T.FAIRWAY || t === T.TEE;
+  const HAZARD = (t) => t === T.SAND || t === T.WATER || t === T.DEEP;
+
+  // Suggest a club and shot type: the tightest option that still reaches the flag gives the finest control.
+  function pickShot(dist) {
     const lie = game.lie;
-    if (lie === T.GREEN) return P.PUTTER;
-    if ((lie === T.FRINGE || lie === T.FIRST || lie === T.FAIRWAY) && dist < 12 && Math.abs(game.hole.height(game.ball.x, game.ball.y) - game.hole.height(game.hole.pin.x, game.hole.pin.y)) < 1.2) {
-      const onGreenLine = sampleLine(game.ball, game.hole.pin, (t) => t === T.GREEN || t === T.FRINGE || t === T.FIRST || t === T.FAIRWAY);
-      if (onGreenLine) return P.PUTTER;
+    const b = game.ball, pin = game.hole.pin;
+    if (lie === T.GREEN) return { club: P.PUTTER, shot: 'full' };
+    if ((lie === T.FRINGE || lie === T.FIRST || lie === T.FAIRWAY) && dist < 12 && Math.abs(game.hole.height(b.x, b.y) - game.hole.height(pin.x, pin.y)) < 1.2) {
+      if (sampleLine(b, pin, (t) => t === T.GREEN || t === T.FRINGE || t === T.FIRST || t === T.FAIRWAY)) return { club: P.PUTTER, shot: 'full' };
     }
+    const clearRun = !HAZARD(lie) && sampleLine(b, pin, ROLLABLE);
+    const overTrouble = lie === T.SAND || !sampleLine(b, pin, (t) => !HAZARD(t));
     // From deep rough, trees or sand the woods are a poor choice: suggest irons at most.
     const noWoods = lie === T.DEEP || lie === T.SAND || lie === T.OOB;
     const longest = lie === T.TEE ? 0 : noWoods ? 2 : 1;
-    let best = P.PUTTER - 1;
-    for (let i = P.PUTTER - 1; i >= longest; i--) {
-      if (lieFullCarry(i, lie) >= dist * 0.98) return i;
-      best = i;
+    let best = null;
+    for (let i = longest; i < P.PUTTER; i++) {
+      for (const shot of P.shotsFor(i)) {
+        if (shot === 'punch') continue; // a deliberate choice, never suggested
+        if (shot === 'chip' && !(clearRun && dist <= 42)) continue;
+        if (shot === 'flop' && !(overTrouble && dist <= 34)) continue;
+        if (shot === 'pitch' && dist > 70) continue;
+        const m = fullDist(i, shot, lie).metric;
+        if (m >= dist * 0.98 && (!best || m < best.m)) best = { club: i, shot, m };
+      }
     }
-    return best;
+    if (best) return best;
+    return { club: longest, shot: 'full' };
   }
   function sampleLine(a, b, ok) {
-    const n = 12;
+    const n = Math.max(12, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 2));
     for (let i = 0; i <= n; i++) {
       const t = game.hole.terrainAt(lerp(a.x, b.x, i / n), lerp(a.y, b.y, i / n));
       if (!ok(t)) return false;
@@ -181,28 +200,34 @@
     const c = P.CLUBS[idx];
     const dist = distToPin();
     game.lieFx = P.lieEffect(game.lie, idx);
+    if (!P.shotsFor(idx).includes(game.shot)) game.shot = 'full';
     if (c.putter) {
       game.putterRange = clamp(Math.ceil((dist * 1.3) / 5) * 5, 5, 40);
       game.lieFull = game.putterRange;
+      game.metric = 'total';
       game.pinPower = dist / game.putterRange;
       els.clubTitle.textContent = 'Putter';
       els.clubDist.textContent = `${game.putterRange} m range`;
       game.showSlopes = true;
     } else {
-      game.lieFull = lieFullCarry(idx, game.lie);
-      // Bisection for the power that carries the pin.
+      const fd = fullDist(idx, game.shot, game.lie);
+      game.lieFull = fd.metric;
+      game.carryRatio = fd.carry / Math.max(fd.total, 1);
+      game.metric = P.shotParams(idx, game.shot).metric;
+      // Bisection for the power that reaches the pin.
       if (dist >= game.lieFull) game.pinPower = dist / game.lieFull;
       else {
         let lo = 0, hi = 1;
-        for (let k = 0; k < 18; k++) {
+        for (let k = 0; k < 16; k++) {
           const m = (lo + hi) / 2;
-          if (carryFor(idx, game.lie, m) < dist) lo = m;
+          if (metricAt(idx, game.shot, game.lie, m) < dist) lo = m;
           else hi = m;
         }
         game.pinPower = (lo + hi) / 2;
       }
-      els.clubTitle.textContent = c.name;
-      els.clubDist.textContent = `${Math.round(game.lieFull)} m carry${game.lieFx.label ? ' (' + game.lieFx.label + ')' : ''}`;
+      const shots = P.shotsFor(idx);
+      els.clubTitle.textContent = shots.length > 1 ? `${c.name} · ${P.SHOTS[game.shot].name} ▾` : c.name;
+      els.clubDist.textContent = `${Math.round(game.lieFull)} m ${game.metric}${game.lieFx.label ? ' (' + game.lieFx.label + ')' : ''}`;
       game.showSlopes = false;
     }
     updateGuide();
@@ -212,6 +237,15 @@
     if (game.phase !== 'aim') return;
     game.clubIdx = (game.clubIdx + d + P.CLUBS.length) % P.CLUBS.length;
     updateClub();
+    audio.play('tick');
+  }
+  function cycleShot() {
+    if (game.phase !== 'aim') return;
+    const shots = P.shotsFor(game.clubIdx);
+    if (shots.length < 2) return;
+    game.shot = shots[(shots.indexOf(game.shot) + 1) % shots.length];
+    updateClub();
+    setHint(`${P.SHOTS[game.shot].name}: ${P.SHOTS[game.shot].desc}`);
     audio.play('tick');
   }
 
@@ -225,6 +259,14 @@
     const p = swinging ? (game.phase === 'backswing' ? game.power : game.lockedPower) : null;
     if (c.putter) {
       game.guide = { length: Math.min(distToPin() + 1.5, game.putterRange), ring: false, ringR: 0.3, power: p != null ? p * game.putterRange : null };
+    } else if (game.metric === 'total') {
+      // Landing spot plus the expected roll-out.
+      const full = game.lieFull;
+      game.guide = {
+        length: full, ring: true, ringR: Math.max(1, full * 0.035),
+        power: p != null ? p * full * game.carryRatio : null,
+        roll: p != null ? p * full : null,
+      };
     } else {
       game.guide = { length: game.lieFull, ring: true, ringR: Math.max(2, game.lieFull * 0.035), power: p != null ? p * game.lieFull : null };
     }
@@ -253,6 +295,7 @@
   function lockPower() {
     game.lockedPower = Math.max(game.power, 0.02);
     game.marker = game.lockedPower;
+    game.returnSpeed = Math.max(0.12, game.lockedPower / RETURN_TIME(game.lockedPower));
     game.phase = 'downswing';
     setHint('Tap at the white line!');
   }
@@ -274,7 +317,7 @@
     const c = P.CLUBS[game.clubIdx];
     game.shotStart = { x: b.x, y: b.y };
     const lie = game.lie;
-    P.launch(b, game.hole, game.clubIdx, game.lockedPower, game.error, game.aim, game.putterRange);
+    P.launch(b, game.hole, game.clubIdx, game.lockedPower, game.error, game.aim, game.putterRange, game.shot);
     game.strokes++;
     game.phase = 'flight';
     game.followT = 0;
@@ -316,7 +359,7 @@
     const top = isPutt ? 1.1 : TOP_ANGLE;
     switch (game.phase) {
       case 'backswing':
-        game.power += dt / (BACKSWING_TIME * (isPutt ? 1.15 : 1));
+        game.power += dt / (BACKSWING_TIME * (isPutt ? 1.15 : game.shot === 'full' || game.shot === 'punch' ? 1 : 1.3));
         if (game.power >= 1) {
           game.power = 1;
           game.topHold += dt;
@@ -326,7 +369,7 @@
         updateGuide();
         break;
       case 'downswing':
-        game.marker -= dt * RETURN_SPEED;
+        game.marker -= dt * game.returnSpeed;
         game.clubAngle = Math.max(0, (game.marker / game.lockedPower) * game.lockedPower * top);
         if (game.marker <= OVERSHOOT) strike(OVERSHOOT);
         break;
@@ -676,8 +719,11 @@
     // Ticks with distances.
     const full = game.lieFull;
     ctx.font = '600 10px system-ui, sans-serif';
-    ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText(P.CLUBS[game.clubIdx].putter ? 'roll m' : `${game.metric} m`, bx, by - 6);
+    ctx.textAlign = 'center';
     for (const q of [0.25, 0.5, 0.75, 1]) {
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.fillRect(u(q) - 0.5, by, 1, bh);
@@ -916,6 +962,7 @@
   holdAim(els.aimRight, 1);
 
   els.clubPrev.addEventListener('click', () => changeClub(-1));
+  $('club-name').addEventListener('click', cycleShot);
   els.clubNext.addEventListener('click', () => changeClub(1));
   els.minimap.addEventListener('click', () => {
     game.overview = !game.overview;
@@ -948,6 +995,8 @@
     } else if (e.code === 'ArrowDown') {
       changeClub(1);
       e.preventDefault();
+    } else if (e.code === 'KeyS') {
+      cycleShot();
     } else if (e.code === 'KeyM') {
       audio.toggle();
       syncSound();

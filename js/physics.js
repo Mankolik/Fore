@@ -18,10 +18,45 @@
     { id: '6I', name: '6 Iron', speed: 52.9, launch: 18, lift: 0.23, bite: 0.35 },
     { id: '8I', name: '8 Iron', speed: 46.9, launch: 22, lift: 0.25, bite: 0.5 },
     { id: 'PW', name: 'P Wedge', speed: 39.8, launch: 27, lift: 0.27, bite: 0.7 },
+    { id: 'GW', name: 'G Wedge', speed: 36.2, launch: 30.5, lift: 0.275, bite: 0.8 },
     { id: 'SW', name: 'S Wedge', speed: 32.4, launch: 34, lift: 0.28, bite: 0.9 },
+    { id: 'LW', name: 'L Wedge', speed: 28.8, launch: 40, lift: 0.29, bite: 1.0 },
     { id: 'PT', name: 'Putter', putter: true },
   ];
   const PUTTER = CLUBS.length - 1;
+  const WEDGES = ['PW', 'GW', 'SW', 'LW'];
+
+  // Shot types reshape a club's trajectory.  Chips are metered by total distance (carry + roll).
+  const SHOTS = {
+    full: { name: 'Full', desc: 'Full swing' },
+    pitch: { name: 'Pitch', desc: 'Soft ¾ swing', speed: 0.7, launch: 1.08, lift: 1, bite: 1.1 },
+    chip: { name: 'Chip', desc: 'Low bump & run', launch: 0.75, lift: 0.6, bite: 0.35, metric: 'total', surface: 'green' },
+    flop: { name: 'Flop', desc: 'High & soft', speed: 0.62, launchAbs: 54, lift: 1.1, bite: 1.5 },
+    punch: { name: 'Punch', desc: 'Low under trees', speed: 0.8, launch: 0.45, lift: 0.4, bite: 0.4, metric: 'total', surface: 'fairway' },
+  };
+  function shotsFor(clubIdx) {
+    const c = CLUBS[clubIdx];
+    if (c.putter) return ['full'];
+    if (c.id === 'DR' || c.id === '3W') return ['full'];
+    if (c.id === '4I' || c.id === '6I') return ['full', 'punch'];
+    if (c.id === '8I') return ['full', 'punch', 'chip'];
+    if (c.id === 'PW' || c.id === 'GW') return ['full', 'pitch', 'chip', 'punch'];
+    return ['full', 'pitch', 'chip', 'flop'];
+  }
+  // Chip speeds per club, tuned for bump-and-run totals of roughly 40/32/28/24/18 m.
+  const CHIP_SPEED = { '8I': 16.76, PW: 14.99, GW: 14.07, SW: 13.11, LW: 11.46 };
+  function shotParams(clubIdx, shot) {
+    const c = CLUBS[clubIdx];
+    const m = SHOTS[shot] || SHOTS.full;
+    return {
+      speed: shot === 'chip' ? CHIP_SPEED[c.id] : c.speed * (m.speed ?? 1),
+      surface: m.surface || 'green',
+      launch: m.launchAbs ?? c.launch * (m.launch ?? 1),
+      lift: c.lift * (m.lift ?? 1),
+      bite: c.bite * (m.bite ?? 1),
+      metric: m.metric || 'carry',
+    };
+  }
 
   // How each surface treats the ball.  e: bounce restitution, mu: share of tangential speed lost per impact,
   // roll: rolling resistance coefficient, grab: how much backspin bites.
@@ -46,7 +81,7 @@
       case T.DEEP:
       case T.OOB: return { speed: 0.72, spin: 0.4, error: 1.7, label: '-28%' };
       case T.SAND:
-        return c.id === 'SW' ? { speed: 0.85, spin: 0.5, error: 1.3, label: '-15%' } : { speed: 0.62, spin: 0.4, error: 1.6, label: '-38%' };
+        return c.id === 'SW' || c.id === 'LW' ? { speed: 0.85, spin: 0.5, error: 1.3, label: '-15%' } : { speed: 0.62, spin: 0.4, error: 1.6, label: '-38%' };
       case T.FIRST: return { speed: 0.96, spin: 0.85, error: 1.1, label: '-4%' };
       case T.TEE: return { speed: 1, spin: 1, error: 1, label: '' };
       default:
@@ -71,28 +106,68 @@
     return x;
   }
 
-  const carryTables = new Map();
-  // Table of carry distance for speed fractions 0..1 (flat, calm, clean lie).
-  function carryTable(clubIdx) {
-    if (carryTables.has(clubIdx)) return carryTables.get(clubIdx);
-    const c = CLUBS[clubIdx];
+  // Calm, flat simulation of a shot including bounces and roll on a green-speed surface.
+  const FLAT_GREEN = {
+    height: () => 0, grad: () => ({ x: 0, y: 0 }), terrainAt: () => T.GREEN, treesNear: () => [],
+    wind: { x: 0, y: 0, speed: 0 }, pin: { x: 1e9, y: 1e9 },
+  };
+  const FLAT_FAIRWAY = { ...FLAT_GREEN, terrainAt: () => T.FAIRWAY };
+  function simulateFlat(p, speed, lieSpin = 1) {
+    const surf = p.surface === 'fairway' ? FLAT_FAIRWAY : FLAT_GREEN;
+    const a = (p.launch * Math.PI) / 180;
+    const b = createBall(0, 0, FLAT_GREEN);
+    b.vx = speed * Math.cos(a);
+    b.vz = speed * Math.sin(a);
+    b.spin = p.lift * (0.6 + 0.4 * lieSpin);
+    b.bite = p.bite * lieSpin;
+    b.z = 0.001;
+    b.state = 'air';
+    b.lastDry = { x: 0, y: 0 };
+    let carry = null;
+    for (let i = 0; i < 2000 && b.state !== 'rest'; i++) {
+      for (const e of step(b, surf, 1 / 30)) if (e.type === 'bounce' && carry == null) carry = e.x;
+    }
+    return { carry: carry ?? b.x, total: b.x };
+  }
+
+  const tables = new Map();
+  // Distance (carry, or total for chips) for speed fractions 0..1, flat, calm, clean lie.
+  function shotTable(clubIdx, shot = 'full') {
+    const key = clubIdx + ':' + shot;
+    if (tables.has(key)) return tables.get(key);
+    const p = shotParams(clubIdx, shot);
     const tbl = [];
-    for (let i = 0; i <= 40; i++) tbl.push(flatCarry(c.speed * (i / 40), c.launch, c.lift));
-    carryTables.set(clubIdx, tbl);
+    for (let i = 0; i <= 40; i++) {
+      const v = p.speed * (i / 40);
+      tbl.push(p.metric === 'total' ? simulateFlat(p, v).total : flatCarry(v, p.launch, p.lift));
+    }
+    tables.set(key, tbl);
     return tbl;
   }
-  function fullCarry(clubIdx) {
-    const t = carryTable(clubIdx);
+  function carryTable(clubIdx) {
+    return shotTable(clubIdx, 'full');
+  }
+  function fullCarry(clubIdx, shot = 'full') {
+    const t = shotTable(clubIdx, shot);
     return t[t.length - 1];
   }
-  // Power in the meter is linear in carry distance; invert the table to find the speed fraction.
-  function speedFractionForPower(clubIdx, power) {
-    const t = carryTable(clubIdx);
+  // Power in the meter is linear in the shot's distance metric; invert the table to find the speed fraction.
+  function speedFractionForPower(clubIdx, power, shot = 'full') {
+    const t = shotTable(clubIdx, shot);
     const target = clamp(power, 0, 1.1) * t[t.length - 1];
     for (let i = 1; i < t.length; i++) {
       if (t[i] >= target) return (i - 1 + (target - t[i - 1]) / (t[i] - t[i - 1])) / 40;
     }
     return 1 + (target - t[t.length - 1]) / (t[t.length - 1] - t[t.length - 2]) / 40;
+  }
+  // Expected {carry, total} for a shot from a given lie (flat, calm), used for meters and guides.
+  function shotDistance(clubIdx, shot, lie, power) {
+    const p = shotParams(clubIdx, shot);
+    const le = lieEffect(lie, clubIdx);
+    const launch = p.launch + (lie === T.SAND ? 4 : 0);
+    const v = p.speed * speedFractionForPower(clubIdx, power, shot) * le.speed;
+    const r = simulateFlat({ ...p, launch }, v, le.spin);
+    return r;
   }
 
   // ---- Ball ------------------------------------------------------------------------------------
@@ -101,7 +176,7 @@
   }
 
   // power 0..1(+), accuracy error -1..1 (+ = slice to the right), aim angle in radians (screen space).
-  function launch(ball, hole, clubIdx, power, error, aim, putterRange) {
+  function launch(ball, hole, clubIdx, power, error, aim, putterRange, shot = 'full') {
     const c = CLUBS[clubIdx];
     const lie = hole.terrainAt(ball.x, ball.y);
     const le = lieEffect(lie, clubIdx);
@@ -125,16 +200,17 @@
       return;
     }
     const e = error * le.error;
-    const speed = c.speed * speedFractionForPower(clubIdx, power) * le.speed;
-    const launchA = ((c.launch + (lie === T.SAND ? 4 : 0)) * Math.PI) / 180;
+    const p = shotParams(clubIdx, shot);
+    const speed = p.speed * speedFractionForPower(clubIdx, power, shot) * le.speed;
+    const launchA = ((p.launch + (lie === T.SAND ? 4 : 0)) * Math.PI) / 180;
     const dir = aim + e * 0.03;
     const vh = speed * Math.cos(launchA);
     ball.vx = Math.cos(dir) * vh;
     ball.vy = Math.sin(dir) * vh;
     ball.vz = speed * Math.sin(launchA);
-    ball.spin = c.lift * (0.6 + 0.4 * le.spin);
+    ball.spin = p.lift * (0.6 + 0.4 * le.spin);
     ball.side = e * 0.05;
-    ball.bite = c.bite * le.spin;
+    ball.bite = p.bite * le.spin;
     ball.z = hole.height(ball.x, ball.y) + 0.02;
     ball.state = 'air';
   }
@@ -351,8 +427,8 @@
   }
 
   Golf.physics = {
-    G, CUP_R, CLUBS, PUTTER, SURF,
-    lieEffect, carryTable, fullCarry, speedFractionForPower, flatCarry,
+    G, CUP_R, CLUBS, PUTTER, SURF, SHOTS, WEDGES,
+    lieEffect, carryTable, shotTable, fullCarry, speedFractionForPower, flatCarry, shotsFor, shotParams, shotDistance,
     createBall, launch, step,
   };
 })();

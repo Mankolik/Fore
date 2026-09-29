@@ -295,6 +295,20 @@
         ctx.beginPath();
         ctx.arc(b.x + dx * pl, b.y + dy * pl, Math.max(gd.ringR * 0.6, this.px(cam, 5)), 0, Math.PI * 2);
         ctx.stroke();
+        if (gd.roll != null) {
+          // Expected roll-out after landing (chips and punches).
+          ctx.setLineDash([this.px(cam, 3), this.px(cam, 4)]);
+          ctx.lineWidth = this.px(cam, 2);
+          ctx.beginPath();
+          ctx.moveTo(b.x + dx * pl, b.y + dy * pl);
+          ctx.lineTo(b.x + dx * gd.roll, b.y + dy * gd.roll);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(255,214,64,0.95)';
+          ctx.beginPath();
+          ctx.arc(b.x + dx * gd.roll, b.y + dy * gd.roll, this.px(cam, 3.5), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       ctx.restore();
     }
