@@ -6,9 +6,10 @@ No build step and no dependencies, so it runs straight from GitHub Pages.
 
 ## Play
 
-Open `index.html` through any static web server, or publish it with GitHub Pages
-(**Settings → Pages → Deploy from a branch → `main` / root**). Share a course
-by its seed: `https://<user>.github.io/Golfy/?seed=heron7`.
+Live at **https://mankolik.github.io/Golfy/**. GitHub Pages serves the `gh-pages` branch,
+so publish updates with `git push origin main:gh-pages`. Share a course by its seed:
+`https://mankolik.github.io/Golfy/?seed=heron7`. To run it locally, serve the folder with any
+static web server.
 
 **Controls (touch)**
 - **Aim:** drag anywhere on the course. Use ⟲ ⟳ for fine adjustment (hold to repeat).
