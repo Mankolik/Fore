@@ -93,6 +93,7 @@
       const hole = game.course.getHole(i);
       // Each biome has its own physics (gravity, air, surfaces); distance tables depend on it.
       P.setEnvironment(hole.biome.env, hole.biome.id);
+      R.displayHeight.k = hole.biome.env.gravity ?? 1;
       distCache.clear();
       game.hole = hole;
       game.layers = R.buildHoleLayers(hole);
@@ -150,18 +151,30 @@
   // player but deliberately left out of the pin mark: allowing for them is part of the skill.
   function rollLieCondition(lie) {
     const r = Math.random();
-    if (lie === T.ROUGH) {
-      if (r < 0.3) return { label: 'Flyer lie', note: 'jumps ~6% further with little spin', speed: 1.06, spin: 0.5, risk: 0 };
-      if (r < 0.55) return { label: 'Sitting down', note: 'about 10% shorter and harder to strike', speed: 0.9, spin: 0.8, risk: 0.08 };
-    } else if (lie === T.DEEP) {
-      if (r < 0.4) return { label: 'Buried in the grass', note: 'about 12% shorter, easy to mishit', speed: 0.88, spin: 0.7, risk: 0.1 };
-    } else if (lie === T.FAIRWAY) {
-      if (r < 0.07) return { label: 'In a divot', note: 'about 7% shorter, harder to strike cleanly', speed: 0.93, spin: 0.8, risk: 0.1 };
-    } else if (lie === T.SAND) {
-      if (r < 0.2) return { label: 'Plugged lie', note: 'no spin, comes out ~30% short', speed: 0.7, spin: 0.5, risk: 0.12 };
-    }
-    return null;
+    let id = null;
+    if (lie === T.ROUGH) id = r < 0.3 ? 'flyer' : r < 0.55 ? 'down' : null;
+    else if (lie === T.DEEP) id = r < 0.4 ? 'buried' : null;
+    else if (lie === T.FAIRWAY) id = r < 0.07 ? 'divot' : null;
+    else if (lie === T.SAND) id = r < 0.2 ? 'plugged' : null;
+    if (!id) return null;
+    // Wording follows the world (sand, snow, moss, ash...); the effect is the same.
+    const text = (game.hole.biome.lies && game.hole.biome.lies[id]) || LIE_TEXT[id];
+    return { id, ...LIE_EFFECT[id], label: text[0], note: text[1] };
   }
+  const LIE_EFFECT = {
+    flyer: { speed: 1.06, spin: 0.5, risk: 0 },
+    down: { speed: 0.9, spin: 0.8, risk: 0.08 },
+    buried: { speed: 0.88, spin: 0.7, risk: 0.1 },
+    divot: { speed: 0.93, spin: 0.8, risk: 0.1 },
+    plugged: { speed: 0.7, spin: 0.5, risk: 0.12 },
+  };
+  const LIE_TEXT = {
+    flyer: ['Flyer lie', 'jumps ~6% further with little spin'],
+    down: ['Sitting down', 'about 10% shorter and harder to strike'],
+    buried: ['Buried in the grass', 'about 12% shorter, easy to mishit'],
+    divot: ['In a divot', 'about 7% shorter, harder to strike cleanly'],
+    plugged: ['Plugged lie', 'no spin, comes out ~30% short'],
+  };
 
   function distToPin() {
     const b = game.ball, p = game.hole.pin;
@@ -733,16 +746,16 @@
     }
     if (game.phase === 'flight' || (game.phase === 'settle' && b.state !== 'holed')) {
       const agl = Math.max(0, b.z - hole.height(b.x, b.y));
-      return { x: b.x, y: b.y - agl * R.ZK * 0.5, scale: game.flightScale };
+      return { x: b.x, y: b.y - agl * R.ZK * R.displayHeight.k * 0.5, scale: game.flightScale };
     }
     const dist = distToPin();
     const c = P.CLUBS[game.clubIdx];
     let D;
     if (c.putter) D = Math.max(dist * 1.6, 8);
-    else D = clamp(Math.min(game.lieFull * 1.12, dist + 30), 30, 400);
+    else D = clamp(Math.min(game.lieFull * 1.12, dist + 30), 30, 520);
     const dx = (hole.pin.x - b.x) / (dist || 1), dy = (hole.pin.y - b.y) / (dist || 1);
     const scale = Math.min((usableH * 0.84) / D, (vw * 1.5) / D) * game.userZoom;
-    return { x: b.x + dx * D * 0.36, y: b.y + dy * D * 0.36, scale: clamp(scale, 0.6, 70) };
+    return { x: b.x + dx * D * 0.36, y: b.y + dy * D * 0.36, scale: clamp(scale, 0.25, 70) };
   }
   function snapCamera() {
     const t = cameraTarget();
@@ -756,7 +769,10 @@
     const k = 1 - Math.exp(-dt * (game.phase === 'flight' ? 6 : 3.5));
     game.cam.x += (t.x - game.cam.x) * k;
     game.cam.y += (t.y - game.cam.y) * k;
-    game.cam.scale = Math.exp(lerp(Math.log(game.cam.scale), Math.log(t.scale), k));
+    // Big zoom changes (e.g. a long low-gravity drive ending by the green) ease in more gently.
+    const ratio = Math.abs(Math.log(t.scale / game.cam.scale));
+    const ks = ratio > 0.7 ? 1 - Math.exp(-dt * 2.2) : k;
+    game.cam.scale = Math.exp(lerp(Math.log(game.cam.scale), Math.log(t.scale), ks));
   }
 
   // ---------------------------------------------------------------------------------------------

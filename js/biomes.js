@@ -41,6 +41,13 @@
           [FAIRWAY]: { e: 0.42, mu: 0.3, roll: 0.09, grab: 0.65 }, // baked fairways run
         },
       },
+      lies: {
+        flyer: ['Hardpan lie', 'ball sits up on baked ground — jumps ~6% further, little spin'],
+        down: ['Soft sand pocket', 'ball has settled in loose sand — about 10% shorter'],
+        buried: ['Tangled in scrub', 'about 12% shorter, easy to mishit'],
+        divot: ['In a divot', 'about 7% shorter, harder to strike cleanly'],
+        plugged: ['Fried egg', 'plugged in the sand — no spin, ~30% short'],
+      },
       names: { [ROUGH]: 'Waste area', [DEEP]: 'Desert scrub', [OOB]: 'Out of bounds', [WATER]: 'Oasis' },
       hazard: { title: 'In the oasis', sub: '+1 penalty stroke' },
       words: [['Mesa', 'Saguaro', 'Canyon', 'Mirage', 'Coyote', 'Sandstone', 'Scorpion', 'Sunburst'], ['Springs', 'Flats', 'Wells', 'Ridge', 'Wash'], ['Desert Club', 'Golf Resort', 'Dunes']],
@@ -58,6 +65,13 @@
       // Low gravity and thin air: huge carries, so the holes are longer.  Meteor craters everywhere.
       gen: { lengthK: 1.41, heightAmp: 1.2, waterChance: 0.8, dunes: 0, craters: 7, windMul: 0.6 },
       env: { gravity: 0.62, air: 0.8, wind: 1, surf: {} },
+      lies: {
+        flyer: ['Floating on moss', 'springy moss — jumps ~6% further, little spin'],
+        down: ['Sunk in moss', 'about 10% shorter and harder to strike'],
+        buried: ['Snared by spores', 'about 12% shorter, easy to mishit'],
+        divot: ['In a scorch mark', 'about 7% shorter, harder to strike cleanly'],
+        plugged: ['Plugged in crater dust', 'no spin, comes out ~30% short'],
+      },
       names: { [FAIRWAY]: 'Glowgrass', [FIRST]: 'Short moss', [ROUGH]: 'Blue moss', [DEEP]: 'Spore thicket', [SAND]: 'Crater dust', [WATER]: 'Acid pool', [GREEN]: 'Lumen green', [FRINGE]: 'Green fringe' },
       hazard: { title: 'Dissolved in acid!', sub: '+1 penalty stroke' },
       words: [['Xeno', 'Nebula', 'Zorbex', 'Kepler', 'Quasar', 'Lumen', 'Vega', 'Proxima'], ['Crater', 'Rift', 'Nexus', 'Prime', 'Expanse', 'Station'], ['Galactic Links', 'Orbital Club', 'Star Course']],
@@ -82,6 +96,13 @@
           [DEEP]: { e: 0.14, mu: 0.8, roll: 0.9, grab: 0.1 }, // wispy fescue swallows the ball
         },
       },
+      lies: {
+        flyer: ['Flyer lie', 'wiry grass — jumps ~6% further with little spin'],
+        down: ['Nestled down', 'about 10% shorter and harder to strike'],
+        buried: ['Buried in the fescue', 'about 12% shorter, easy to mishit'],
+        divot: ['In a divot', 'about 7% shorter, harder to strike cleanly'],
+        plugged: ['Plugged in the pot bunker', 'no spin, comes out ~30% short'],
+      },
       names: { [DEEP]: 'Fescue', [ROUGH]: 'Links rough', [OOB]: 'Out of bounds', [WATER]: 'Sea inlet' },
       hazard: { title: 'Into the inlet', sub: '+1 penalty stroke' },
       words: [['Gorse', 'Seaside', 'Kittiwake', 'Saltire', 'Machair', 'Gannet', 'Driftwood', 'Tidewater'], ['Bay', 'Point', 'Head', 'Strand', 'Sound'], ['Links', 'Old Course', 'Golf Links']],
@@ -104,8 +125,15 @@
           [ROUGH]: { e: 0.06, mu: 0.9, roll: 1.2, grab: 0.1 },
           [DEEP]: { e: 0.03, mu: 0.95, roll: 1.8, grab: 0.05 },
           [OOB]: { e: 0.05, mu: 0.9, roll: 1.4, grab: 0.1 },
-          [WATER]: { e: 0.5, mu: 0.06, roll: 0.025, grab: 0.05 }, // ice!
+          [WATER]: { e: 0.45, mu: 0.08, roll: 0.04, grab: 0.05 }, // ice: glides further than a green, steadily slowing
         },
+      },
+      lies: {
+        flyer: ['On packed snow', 'firm crust — jumps ~6% further, little spin'],
+        down: ['Sunk in the snow', 'about 10% shorter and harder to strike'],
+        buried: ['Plugged in deep snow', 'about 12% shorter, easy to mishit'],
+        divot: ['On a frozen divot', 'about 7% shorter, harder to strike cleanly'],
+        plugged: ['Frozen in the bunker', 'no spin, comes out ~30% short'],
       },
       names: { [ROUGH]: 'Snow', [DEEP]: 'Deep snow', [WATER]: 'Frozen pond', [FAIRWAY]: 'Frosty fairway', [SAND]: 'Frozen bunker' },
       hazard: null, // frozen: no penalty
@@ -123,6 +151,13 @@
       trees: [['dead', 3], ['rock', 2]], treeDensity: 0.6,
       gen: { lengthK: 1, heightAmp: 1.6, waterChance: 1.2, dunes: 0.5, craters: 2, windMul: 0.9 },
       env: { gravity: 1, air: 1, wind: 1, surf: { [ROUGH]: { e: 0.2, mu: 0.6, roll: 0.42, grab: 0.2 } } },
+      lies: {
+        flyer: ['Perched on ash', 'light ash — jumps ~6% further, little spin'],
+        down: ['Sunk in ash', 'about 10% shorter and harder to strike'],
+        buried: ['Caught in scorched scrub', 'about 12% shorter, easy to mishit'],
+        divot: ['In a cinder divot', 'about 7% shorter, harder to strike cleanly'],
+        plugged: ['Plugged in black sand', 'no spin, comes out ~30% short'],
+      },
       names: { [ROUGH]: 'Ash', [DEEP]: 'Scorched scrub', [SAND]: 'Black sand', [WATER]: 'Lava', [OOB]: 'Out of bounds' },
       hazard: { title: 'Lava!', sub: 'Ball melted · +1 penalty stroke' },
       words: [['Ember', 'Obsidian', 'Cinder', 'Magma', 'Basalt', 'Pyro', 'Sulfur', 'Brimstone'], ['Caldera', 'Crater', 'Rift', 'Summit', 'Vent'], ['Volcano Club', 'Lava Links', 'Fire Course']],

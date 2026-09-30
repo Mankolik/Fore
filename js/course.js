@@ -320,7 +320,8 @@
         }
         const creek = { pts, hw: rng.float(2.6, 3.8) };
         const sdf = (x, y) => polylineDist(creek.pts, x, y) - creek.hw;
-        if (safeWater(sdf)) creeks.push(creek);
+        // Frozen worlds keep only ponds: a sheet of ice has to be level, which a creek down a slope can't be.
+        if (safeWater(sdf) && !biome.env.ice) creeks.push(creek);
       }
     }
     // Water tight to the side or back of the green.
@@ -491,6 +492,28 @@
         h -= sandDepth * smoothstep(0.6, sandDepth > 0.8 ? -1.2 : -2.5, sand);
         h -= 1.2 * smoothstep(1, -4, water);
         fHeight[k] = h;
+      }
+    }
+    // Frozen ponds: a perfectly level sheet at shoreline height with a gentle bank, so the ball slides
+    // instead of accelerating down into a bowl.
+    if (biome.env.ice) {
+      for (const wb of waters) {
+        const ext = blobExtent(wb) + 4;
+        const i0 = Math.max(0, Math.floor(wb.cx - ext)), i1 = Math.min(W, Math.ceil(wb.cx + ext));
+        const j0 = Math.max(0, Math.floor(wb.cy - ext)), j1 = Math.min(L, Math.ceil(wb.cy + ext));
+        let sum = 0, n = 0;
+        for (let j = j0; j <= j1; j++)
+          for (let i = i0; i <= i1; i++) {
+            const d = blobSdf(wb, i, j);
+            if (d > 1.5 && d < 3) { sum += fHeight[j * (W + 1) + i]; n++; }
+          }
+        if (!n) continue;
+        const level = sum / n;
+        for (let j = j0; j <= j1; j++)
+          for (let i = i0; i <= i1; i++) {
+            const k = j * (W + 1) + i, d = blobSdf(wb, i, j);
+            if (d < 4) fHeight[k] = lerp(level - 0.05, fHeight[k], smoothstep(1, 4, d)); // level to 1 m past the shore
+          }
       }
     }
     Object.assign(hole, { fFair, fDeep, fOob, fGreen, fTee, fSand, fWater, fHeight });

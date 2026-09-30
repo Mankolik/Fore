@@ -67,6 +67,21 @@ for (const seed of seeds) {
   b.vx = 0; b.vy = -5; b.state = 'roll';
   while (b.state === 'roll') P.step(b, ice, 1 / 30);
   check(b.state === 'rest' && 900 - b.y > 30, `ice is playable and slippery (slid ${(900 - b.y).toFixed(0)} m)`);
+  // ...and it never speeds the ball up: frozen ponds on real holes are level.
+  const wc = (() => { for (let k = 0; k < 300; k++) if (Golf.biomeForSeed('w' + k).id === 'winter') return Golf.generateCourse('w' + k); })();
+  for (let h = 0; h < 9; h++) {
+    const hole = wc.getHole(h);
+    for (const wb of hole.waters) {
+      let maxSlope = 0;
+      for (let a = 0; a < 6.28; a += 0.5) for (let r = 0; r < wb.R * 0.8; r += 1.5) {
+        const x = wb.cx + Math.cos(a) * r, y = wb.cy + Math.sin(a) * r;
+        if (hole.terrainAt(x, y) !== T.WATER) continue;
+        const g = hole.grad(x, y);
+        maxSlope = Math.max(maxSlope, Math.hypot(g.x, g.y));
+      }
+      check(maxSlope < 0.01, `winter hole ${h + 1}: frozen pond is level (max slope ${(maxSlope * 100).toFixed(1)}%)`);
+    }
+  }
   P.setEnvironment({}, 'earth');
 }
 

@@ -6,6 +6,7 @@
   const hash2 = Golf.hash2;
 
   const ZK = 0.55; // how far (in metres of screen-up) one metre of height is drawn
+  const displayHeight = { k: 1 }; // set per world: gravity relative to Earth
 
   const COLORS = [];
   COLORS[T.OOB] = [58, 104, 50];
@@ -532,7 +533,8 @@
       ctx.stroke();
       ctx.strokeStyle = 'rgba(255,255,255,0.6)';
       ctx.beginPath();
-      tr.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y - p.agl * ZK) : ctx.moveTo(p.x, p.y - p.agl * ZK)));
+      const hk = ZK * displayHeight.k;
+      tr.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y - p.agl * hk) : ctx.moveTo(p.x, p.y - p.agl * hk)));
       ctx.stroke();
     }
 
@@ -585,14 +587,15 @@
       if (!b || b.state === 'holed' || b.state === 'water') return;
       const { ctx } = this;
       const cam = game.cam;
-      const agl = Math.max(0, b.z - game.hole.height(b.x, b.y));
+      // Heights are drawn scaled by gravity so a low-gravity lob looks like an Earth shot on screen.
+      const agl = Math.max(0, b.z - game.hole.height(b.x, b.y)) * displayHeight.k;
       const r = Math.max(0.021 * 2, this.px(cam, 3.2)) * (1 + agl * 0.012);
       // Shadow.
       ctx.fillStyle = `rgba(0,0,0,${clamp(0.35 - agl * 0.006, 0.1, 0.35)})`;
       ctx.beginPath();
       ctx.ellipse(b.x + this.px(cam, 1), b.y + this.px(cam, 1), r * 1.1, r * 0.8, 0, 0, Math.PI * 2);
       ctx.fill();
-      const by = b.y - agl * ZK;
+      const by = b.y - agl * ZK;  // agl is already display-scaled above
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = 'rgba(0,0,0,0.35)';
       ctx.lineWidth = this.px(cam, 1);
@@ -779,5 +782,5 @@
     ctx.restore();
   }
 
-  Golf.render = { Renderer, buildHoleLayers, buildGreenLayer, buildMinimap, drawMinimap, drawWind, ZK };
+  Golf.render = { displayHeight, Renderer, buildHoleLayers, buildGreenLayer, buildMinimap, drawMinimap, drawWind, ZK };
 })();

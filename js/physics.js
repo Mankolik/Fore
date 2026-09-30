@@ -488,7 +488,7 @@
     // Gravity along the slope (5/7 for a rolling sphere) and rolling resistance.
     const gx = -G * g.x * (5 / 7), gy = -G * g.y * (5 / 7);
     // Longer grass grabs a slow ball harder; greens stay pure so putts behave predictably.
-    const slowGrip = terr === T.GREEN || terr === T.FRINGE ? 0 : Math.max(0, 1 - sp / 2.5);
+    const slowGrip = terr === T.GREEN || terr === T.FRINGE || (ICE && terr === T.WATER) ? 0 : Math.max(0, 1 - sp / 2.5);
     const fr = surf.roll * G * (1 + slowGrip);
     if (sp < 0.04) {
       const slopeA = Math.hypot(gx, gy);
