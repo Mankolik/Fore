@@ -77,6 +77,7 @@
 
   function startRound(seed, holeIdx = 0, scores = []) {
     game.course = Golf.generateCourse(seed);
+    game.seenBiomeIntro = false;
     game.scores = scores.slice();
     game.inRound = true;
     hideMenu();
@@ -90,6 +91,9 @@
     els.scorecard.classList.add('hidden');
     setTimeout(() => {
       const hole = game.course.getHole(i);
+      // Each biome has its own physics (gravity, air, surfaces); distance tables depend on it.
+      P.setEnvironment(hole.biome.env, hole.biome.id);
+      distCache.clear();
       game.hole = hole;
       game.layers = R.buildHoleLayers(hole);
       buildMinimap();
@@ -105,7 +109,12 @@
       snapCamera();
       R.drawWind(els.wind, hole.wind, game.dpr);
       updateHud(true);
-      toast(`Hole ${i + 1}`, `Par ${hole.par} · ${Math.round(hole.length)} m`, 1800);
+      const bio = hole.biome;
+      if (i === 0 || !game.seenBiomeIntro) {
+        game.seenBiomeIntro = true;
+        toast(`${bio.icon} ${bio.name}`, `Hole ${i + 1} · Par ${hole.par} · ${Math.round(hole.length)} m`, 2600);
+        if (BIOME_TIPS[bio.id]) setTimeout(() => setHint(BIOME_TIPS[bio.id], 4500), 900);
+      } else toast(`Hole ${i + 1}`, `Par ${hole.par} · ${Math.round(hole.length)} m`, 1800);
       const idle = window.requestIdleCallback || ((f) => setTimeout(f, 60));
       idle(() => {
         if (game.hole === hole) game.layers.green = R.buildGreenLayer(hole);
@@ -161,6 +170,14 @@
 
   // Lie-adjusted distance for a club/shot: carry, or total (carry + roll) for chips and punches.
   const distCache = new Map();
+  const BIOME_TIPS = {
+    desert: 'Hot, thin air carries further · baked fairways run · waste areas are firm sand',
+    alien: 'Low gravity: the ball flies ~40% further · craters everywhere · avoid the acid',
+    links: 'Firm, fast links: expect wind and lots of run',
+    winter: 'Snow grabs the ball · frozen ponds are playable — and slippery!',
+    volcanic: 'Lava lakes swallow balls · black sand bunkers',
+  };
+  const terrainName = (t) => (game.hole && game.hole.biome.names[t]) || Golf.TERRAIN_NAMES[t];
   function metricAt(clubIdx, shot, lie, power) {
     const r = P.shotDistance(clubIdx, shot, lie, power);
     return P.shotParams(clubIdx, shot).metric === 'total' ? r.total : r.carry;
@@ -175,7 +192,7 @@
   }
 
   const ROLLABLE = (t) => t === T.GREEN || t === T.FRINGE || t === T.FIRST || t === T.FAIRWAY || t === T.TEE;
-  const HAZARD = (t) => t === T.SAND || t === T.WATER || t === T.DEEP;
+  const HAZARD = (t) => t === T.SAND || t === T.DEEP || (t === T.WATER && !game.hole.biome.env.ice);
 
   // Suggest a club and shot type: the tightest option that still reaches the flag gives the finest control.
   function pickShot(dist) {
@@ -593,7 +610,8 @@
       game.phase = 'settle';
       game.settleT = 1.3;
       game.strokes++;
-      toast('Water hazard', '+1 penalty stroke', 1600);
+      const hz = game.hole.biome.hazard || { title: 'Water hazard', sub: '+1 penalty stroke' };
+      toast(hz.title, hz.sub, 1600);
       game.afterSettle = () => {
         const d = findDrop(b.lastDry);
         b.x = d.x;
@@ -775,7 +793,7 @@
     const b = game.ball;
     const terr = hole.terrainAt(b.x, b.y);
     const cond = game.lieCond && game.phase !== 'flight' && game.phase !== 'settle' ? ` (${game.lieCond.label.toLowerCase()})` : '';
-    setText(els.lie, 'lie', Golf.TERRAIN_NAMES[terr] + cond);
+    setText(els.lie, 'lie', terrainName(terr) + cond);
     const dist = distToPin();
     setText(els.dist, 'dist', dist < 10 ? `${dist.toFixed(1)} m to pin` : `${Math.round(dist)} m to pin`);
   }
@@ -829,7 +847,7 @@
     ctx.save();
     // Background.
     ctx.fillStyle = 'rgba(10,20,10,0.7)';
-    roundRect(ctx, bx - 4, by - 4, bw + 8, bh + 8, 8);
+    roundRect(ctx, bx - 4, by - 20, bw + 8, bh + 24, 8); // includes the distance labels (legible on snow)
     ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     roundRect(ctx, bx, by, bw, bh, 5);
@@ -859,7 +877,8 @@
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.fillRect(u(q) - 0.5, by, 1, bh);
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      ctx.fillText(`${Math.round(full * q)}`, u(q), by - 6);
+      ctx.textAlign = q === 1 ? 'right' : 'center';
+      ctx.fillText(`${Math.round(full * q)}`, q === 1 ? u(q) + 2 : u(q), by - 6);
     }
     // Pin marker.
     if (game.pinPower != null) {
@@ -912,7 +931,7 @@
     const pars = game.course.pars;
     const complete = game.scores.filter((s) => s != null).length === 9;
     els.scTitle.textContent = complete ? 'Round complete' : 'Scorecard';
-    els.scCourse.textContent = `${game.course.name} · seed “${game.course.seed}”`;
+    els.scCourse.textContent = `${game.course.biome.icon} ${game.course.name} · seed “${game.course.seed}”`;
     const diff = totalVsPar();
     const total = game.scores.reduce((a, s) => a + (s || 0), 0);
     const played = game.scores.filter((s) => s != null).length;
@@ -985,14 +1004,14 @@
     if (game.inRound && game.hole) {
       els.continueWrap.classList.remove('hidden');
       els.continueBtn.textContent = 'Resume';
-      els.continueInfo.textContent = `${game.course.name} · Hole ${game.holeIdx + 1} · ${fmtDiff(totalVsPar())}`;
+      els.continueInfo.textContent = `${game.course.biome.icon} ${game.course.name} · Hole ${game.holeIdx + 1} · ${fmtDiff(totalVsPar())}`;
     } else if (saved) {
       const c = Golf.generateCourse(saved.seed);
       let d = 0;
       saved.scores.forEach((s, i) => { if (s != null) d += s - c.pars[i]; });
       els.continueWrap.classList.remove('hidden');
       els.continueBtn.textContent = 'Continue round';
-      els.continueInfo.textContent = `${c.name} · Hole ${saved.holeIdx + 1} of 9 · ${fmtDiff(d)}`;
+      els.continueInfo.textContent = `${c.biome.icon} ${c.name} · Hole ${saved.holeIdx + 1} of 9 · ${fmtDiff(d)}`;
     } else els.continueWrap.classList.add('hidden');
     els.menu.classList.remove('hidden');
     updatePreview();
@@ -1007,7 +1026,7 @@
       return;
     }
     const c = Golf.generateCourse(seed);
-    els.preview.textContent = `${c.name} · Par ${c.pars.reduce((a, b) => a + b, 0)}`;
+    els.preview.textContent = `${c.biome.icon} ${c.biome.name} · ${c.name} · Par ${c.pars.reduce((a, b) => a + b, 0)}`;
   }
 
   // ---------------------------------------------------------------------------------------------

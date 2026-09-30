@@ -3,7 +3,7 @@
 // (the pin mark for putts is deliberately flat: reading up/downhill is part of the challenge).
 // Run: node tests/putting.js
 const path = require('path');
-for (const f of ['util', 'course', 'physics']) require(path.join(__dirname, '..', 'js', f + '.js'));
+for (const f of ['util', 'biomes', 'course', 'physics']) require(path.join(__dirname, '..', 'js', f + '.js'));
 const Golf = globalThis.Golf;
 const { T, physics: P } = Golf;
 

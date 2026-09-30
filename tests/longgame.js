@@ -2,7 +2,7 @@
 // noise.  Reports fairways hit, trouble rate, greens in regulation and proximity.
 // Run: node tests/longgame.js [seeds]
 const path = require('path');
-for (const f of ['util', 'course', 'physics']) require(path.join(__dirname, '..', 'js', f + '.js'));
+for (const f of ['util', 'biomes', 'course', 'physics']) require(path.join(__dirname, '..', 'js', f + '.js'));
 const Golf = globalThis.Golf;
 const { T, physics: P } = Golf;
 

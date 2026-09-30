@@ -143,7 +143,7 @@
     }
   }
 
-  function generateHole(seed, par, number) {
+  function generateHole(seed, par, number, biome = Golf.BIOMES.parkland) {
     const rng = new RNG(seed);
     const noise = new Noise2D(seed ^ 0x2545f491);
     const hole = new Hole();
@@ -157,7 +157,11 @@
     if (par === 3) lenRange = rng.chance(0.4) ? [90, 130] : [130, 195];
     else if (par === 4) lenRange = rng.chance(0.3) ? [255, 300] : [300, 410];
     else lenRange = [450, 530];
-    const total = rng.float(lenRange[0], lenRange[1]);
+    const bg = biome.gen;
+    // Separate stream for biome-only extras, so the main layout of a seed is unaffected by them.
+    const brng = new RNG((seed ^ 0x5eed1e55) >>> 0);
+    hole.biome = biome;
+    const total = rng.float(lenRange[0], lenRange[1]) * bg.lengthK;
     let heading = rng.float(-0.3, 0.3); // radians clockwise from north
     const ctrl = [{ x: 0, y: 0 }];
     let bends;
@@ -257,7 +261,7 @@
       bunkers.push(makeBlob(rng, green.cx + Math.cos(ang) * d, green.cy + Math.sin(ang) * d, R, { sx: rng.float(1.4, 2.0), rot: ang + Math.PI / 2, wobble: 0.2 }));
     }
     // Small, deep pot bunkers hugging the green.
-    for (let i = 0, n = rng.chance(0.45) ? rng.int(1, 3) : 0; i < n; i++) {
+    for (let i = 0, n = rng.chance(bg.potBunkers ? 0.85 : 0.45) ? rng.int(1, 3) : 0; i < n; i++) {
       const ang = rng.float(0, Math.PI * 2);
       const R = rng.float(1.8, 2.8);
       const d = greenExtR + R + rng.float(0.8, 2);
@@ -287,14 +291,14 @@
     const waters = [];
     const creeks = [];
     const safeWater = (sdfFn) => sdfFn(hole.tee.x, hole.tee.y) > 22 && sdfFn(hole.pin.x, hole.pin.y) > greenR + 7 && sdfFn(green.cx, green.cy) > greenR + 6;
-    if (par === 3 && rng.chance(0.55)) {
+    if (par === 3 && rng.chance(0.55 * bg.waterChance)) {
       for (let t = 0; t < 8; t++) {
         const p = pointAt(path, S * rng.float(0.4, 0.62));
         const b = makeBlob(rng, p.x + rng.float(-12, 12), p.y, rng.float(14, 22), { sx: rng.float(1.4, 2.0), rot: Math.atan2(p.dy, p.dx) + Math.PI / 2, wobble: 0.2 });
         if (safeWater((x, y) => blobSdf(b, x, y))) { waters.push(b); break; }
       }
     } else if (par >= 4) {
-      if (rng.chance(0.45)) {
+      if (rng.chance(0.45 * bg.waterChance)) {
         for (let t = 0; t < 8; t++) {
           const s = S * rng.float(0.3, 0.8);
           const p = pointAt(path, s);
@@ -305,7 +309,7 @@
           if (safeWater((x, y) => blobSdf(b, x, y))) { waters.push(b); break; }
         }
       }
-      if (rng.chance(0.35)) {
+      if (rng.chance(0.35 * bg.waterChance)) {
         const s = S - rng.float(60, 95);
         const p = pointAt(path, s);
         const pts = [];
@@ -320,7 +324,7 @@
       }
     }
     // Water tight to the side or back of the green.
-    if (waters.length === 0 && rng.chance(par === 3 ? 0.35 : 0.3)) {
+    if (waters.length === 0 && rng.chance((par === 3 ? 0.35 : 0.3) * bg.waterChance)) {
       const base = Math.atan2(-endP.dy, -endP.dx);
       for (let t = 0; t < 10; t++) {
         const ang = base + rng.sign() * rng.float(1.2, 2.9);
@@ -362,7 +366,19 @@
       greenTilt.x = Math.cos(a) * m;
       greenTilt.y = Math.sin(a) * m;
     }
-    const baseH = (x, y) => noise.fbm(x / 160, y / 160, 3) * 5 + noise.fbm(x / 45 + 50, y / 45, 2) * 1.0;
+    const baseH = (x, y) => (noise.fbm(x / 160, y / 160, 3) * 5 + noise.fbm(x / 45 + 50, y / 45, 2) * 1.0) * bg.heightAmp;
+    // Meteor craters (alien, volcanic): bowls with raised rims, kept clear of tees and greens.
+    const craters = [];
+    for (let i = 0; i < bg.craters; i++) {
+      for (let t = 0; t < 20; t++) {
+        const cx = brng.float(10, W - 10), cy = brng.float(10, L - 10), r = brng.float(7, 18);
+        if (Math.hypot(cx - green.cx, cy - green.cy) < greenR * 1.4 + r + 12) continue;
+        if (Math.hypot(cx - hole.tee.x, cy - hole.tee.y) < r + 25) continue;
+        craters.push({ x: cx, y: cy, r, depth: brng.float(1.2, 3) });
+        break;
+      }
+    }
+    hole.craters = craters;
     const hGreenC = baseH(green.cx, green.cy);
     const greenExt = blobExtent(green);
     const hTee = baseH(hole.tee.x, hole.tee.y) + 0.4;
@@ -443,6 +459,19 @@
         let h = baseH(x, y);
         const bumpW = smoothstep(0, 10, fFair[k]) * smoothstep(0, 10, fGreen[k]);
         if (bumpW > 0) h += noise.value(x / 9, y / 9 + 40) * 0.35 * bumpW;
+        if (bg.dunes && bumpW > 0) {
+          // Rumpled dunes and mounds off the short grass.
+          const rid = 1 - Math.abs(noise.value(x / 22 + 300, y / 22));
+          h += bg.dunes * (rid * rid * 2.2 - 0.8) * bumpW;
+        }
+        for (const c of craters) {
+          const d = Math.hypot(x - c.x, y - c.y);
+          if (d < c.r * 1.8) {
+            const u = d / c.r;
+            h += u < 1 ? -c.depth * (1 - u * u) : 0;
+            h += c.depth * 0.35 * Math.exp(-(((u - 1) / 0.25) ** 2));
+          }
+        }
         if (fGreen[k] < 14) {
           const gh = hGreenC + greenTilt.x * (x - green.cx) + greenTilt.y * (y - green.cy) + noise.fbm(x / 16 + 7, y / 16, 2) * 0.16;
           h = lerp(h, gh, 1 - smoothstep(-1, 14, fGreen[k]));
@@ -480,13 +509,25 @@
         const deep = S_(fDeep);
         if (deep < -3) {
           // Occasional lone tree in the rough to shape shots.
-          if (deep > -14 && rng.chance(0.03)) trees.push(makeTree(rng, tx, ty, r, pine));
+          if (deep > -14 && rng.chance(0.03 * biome.treeDensity)) trees.push(makeTree(rng, tx, ty, r, pine));
           continue;
         }
         const n = noise.fbm(tx / 55 + 99, ty / 55, 3);
         let p = 0.05 + 0.7 * smoothstep(0, 0.4, n) + 0.25 * smoothstep(0, 25, deep);
         if (S_(fOob) > 0) p = Math.max(p, 0.6);
-        if (rng.chance(p)) trees.push(makeTree(rng, tx, ty, r, pine));
+        if (rng.chance(p * biome.treeDensity)) trees.push(makeTree(rng, tx, ty, r, pine));
+      }
+    }
+    // Biome tree types: re-style each tree (its position and the main layout stay the same).
+    if (biome.id !== 'parkland') {
+      const total = biome.trees.reduce((a, [, w]) => a + w, 0);
+      for (const t of trees) {
+        let r = brng.next() * total, kind = biome.trees[0][0];
+        for (const [k, w] of biome.trees) {
+          r -= w;
+          if (r < 0) { kind = k; break; }
+        }
+        styleTree(t, kind, brng);
       }
     }
     hole.trees = trees;
@@ -500,14 +541,37 @@
     }
 
     // --- Wind.
-    const wSpeed = Math.pow(rng.next(), 1.15) * 9;
+    const wSpeed = Math.pow(rng.next(), 1.15) * 9 * bg.windMul;
     const wAng = rng.float(0, Math.PI * 2);
     hole.wind = { x: Math.cos(wAng) * wSpeed, y: Math.sin(wAng) * wSpeed, speed: wSpeed };
     return hole;
   }
 
+  // cb: height (fraction) where the canopy starts; taper: canopy narrows toward the top.
   function makeTree(rng, x, y, r, pine) {
-    return { x, y, r, pine, h: pine ? rng.float(11, 18) : rng.float(8, 14), trunk: 0.35, tint: rng.float(-1, 1) };
+    return { x, y, r, pine, kind: pine ? 'pine' : 'oak', cb: pine ? 0.2 : 0.35, taper: pine, h: pine ? rng.float(11, 18) : rng.float(8, 14), trunk: 0.35, tint: rng.float(-1, 1) };
+  }
+  const TREE_KINDS = {
+    cactus: { r: [0.9, 1.6], h: [4, 8], trunk: 0.45, cb: 0.05, taper: false },
+    palm: { r: [2.6, 4], h: [9, 14], trunk: 0.3, cb: 0.75, taper: false },
+    rock: { r: [1.4, 3], h: [3, 9], trunk: 1.0, cb: 0, taper: true },
+    crystal: { r: [1.4, 3.2], h: [5, 13], trunk: 0.6, cb: 0.05, taper: true },
+    mushroom: { r: [3, 6], h: [5, 9], trunk: 0.5, cb: 0.6, taper: false },
+    gorse: { r: [1.5, 3], h: [1.5, 2.6], trunk: 0.3, cb: 0, taper: false },
+    snowpine: { r: [2.2, 3.4], h: [11, 18], trunk: 0.35, cb: 0.2, taper: true },
+    birch: { r: [2.5, 4.2], h: [9, 15], trunk: 0.3, cb: 0.35, taper: false },
+    dead: { r: [2, 3.6], h: [6, 11], trunk: 0.35, cb: 0.3, taper: false },
+  };
+  function styleTree(t, kind, rng) {
+    const k = TREE_KINDS[kind];
+    if (!k) return;
+    t.kind = kind;
+    t.r = rng.float(k.r[0], k.r[1]);
+    t.h = rng.float(k.h[0], k.h[1]);
+    t.trunk = k.trunk;
+    t.cb = k.cb;
+    t.taper = k.taper;
+    t.pine = k.taper;
   }
 
   function polylineDist(pts, x, y) {
@@ -528,6 +592,7 @@
 
   function generateCourse(seedStr) {
     const seed = Golf.hashString(String(seedStr));
+    const biome = Golf.biomeForSeed(seedStr);
     const rng = new RNG(seed);
     const pars = rng.shuffle([3, 3, 4, 4, 4, 4, 4, 5, 5]);
     // Keep the opener a par 4 when possible: friendlier start.
@@ -535,15 +600,17 @@
       const i = pars.indexOf(4);
       [pars[0], pars[i]] = [pars[i], pars[0]];
     }
-    const name = `${rng.pick(NAME_A)} ${rng.pick(NAME_B)} ${rng.pick(NAME_C)}`;
+    const words = biome.words || [NAME_A, NAME_B, NAME_C];
+    const name = `${rng.pick(words[0])} ${rng.pick(words[1])} ${rng.pick(words[2])}`;
     const holeSeeds = pars.map(() => (rng.next() * 4294967296) >>> 0);
     const cache = new Map();
     return {
       seed: String(seedStr),
       name,
+      biome,
       pars,
       getHole(i) {
-        if (!cache.has(i)) cache.set(i, generateHole(holeSeeds[i], pars[i], i + 1));
+        if (!cache.has(i)) cache.set(i, generateHole(holeSeeds[i], pars[i], i + 1, biome));
         return cache.get(i);
       },
     };

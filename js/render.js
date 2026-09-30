@@ -32,12 +32,14 @@
     const W = hole.W;
     const H = hole.fHeight;
     const inv = 1 / ppm;
+    const biome = hole.biome || Golf.BIOMES.parkland;
+    const pal = biome.colors, liq = biome.liquid, oobc = biome.oobLine;
     for (let py = 0; py < ch; py++) {
       const y = y0 + (py + 0.5) * inv;
       for (let px = 0; px < cw; px++) {
         const x = x0 + (px + 0.5) * inv;
         const t = hole.terrainAt(x, y);
-        const c = COLORS[t];
+        const c = pal[t] || COLORS[t];
         let r = c[0], g = c[1], b = c[2];
         let shade = 1;
 
@@ -54,10 +56,21 @@
         if (t === T.WATER) {
           const depth = -hole.sampleIdx(hole.fWater, x, y);
           const q = clamp(depth / 9, 0, 1);
-          r = lerp(78, 30, q); g = lerp(160, 92, q); b = lerp(206, 160, q);
-          const ripple = noise.value(x / 3 + y / 7, y / 2.5) * 0.06;
-          shade = 1 + ripple;
-          if (depth < 0.35) { r = 190; g = 225; b = 235; }
+          const sh = liq.shallow, dp = liq.deep;
+          r = lerp(sh[0], dp[0], q); g = lerp(sh[1], dp[1], q); b = lerp(sh[2], dp[2], q);
+          shade = 1 + noise.value(x / 3 + y / 7, y / 2.5) * 0.06;
+          if (liq.style === 'lava') {
+            // Glowing lava with drifting dark crust plates.
+            const n = noise.fbm(x / 5, y / 5, 2);
+            if (n > 0.18) { const k = clamp((n - 0.18) * 4, 0, 1); r = lerp(r, 60, k); g = lerp(g, 24, k); b = lerp(b, 16, k); }
+            shade = 1 + noise.value(x / 1.5, y / 1.5) * 0.08;
+          } else if (liq.style === 'acid') {
+            if (hash2((x * 2) | 0, (y * 2) | 0, 3) > 0.985) { r = 240; g = 255; b = 200; } // bubbles
+          } else if (liq.style === 'ice') {
+            if (Math.abs(noise.value(x / 3.5 + 11, y / 3.5)) < 0.03 || Math.abs(noise.value(x / 9, y / 9 + 7)) < 0.015) { r = 250; g = 253; b = 255; }
+            shade = 1 + noise.value(x / 12, y / 30) * 0.05;
+          }
+          if (depth < 0.35) { r = liq.edge[0]; g = liq.edge[1]; b = liq.edge[2]; }
         } else {
           shade = 1 + clamp((gx + gy) * 2.2, -0.28, 0.28) + clamp(elev * 0.008, -0.05, 0.05);
           const mott = noise.value(x / 7, y / 7) * 0.05 + noise.value(x / 1.7, y / 1.7) * 0.025;
@@ -74,7 +87,7 @@
           if (t !== T.OOB) {
             const o = hole.sampleIdx(hole.fOob, x, y);
             if (o > -0.3 && x > 1 && y > 1 && x < W - 1 && y < hole.L - 1 && Math.floor((x + y) * 0.6) % 3 !== 0) {
-              r = 245; g = 245; b = 240; shade = 1;
+              r = oobc[0]; g = oobc[1]; b = oobc[2]; shade = 1;
             }
           }
           if (t === T.GREEN || t === T.FRINGE) {
@@ -100,12 +113,15 @@
       ctx.ellipse(t.x + t.h * 0.22, t.y + t.h * 0.18, t.r * 1.05, t.r * 0.9, 0.6, 0, Math.PI * 2);
       ctx.fill();
     }
-    for (const t of trees) drawTree(ctx, t);
+    const bid = hole.biome ? hole.biome.id : 'parkland';
+    for (const t of trees) drawTree(ctx, t, bid);
     return { canvas, x0, y0, w, h, ppm };
   }
 
-  function drawTree(ctx, t) {
+  function drawTree(ctx, t, biome) {
     const tint = t.tint * 12;
+    const special = TREE_DRAW[t.kind];
+    if (special) return special(ctx, t, tint, biome);
     if (t.pine) {
       const layers = 3;
       for (let l = 0; l < layers; l++) {
@@ -142,6 +158,195 @@
       ctx.fill();
     }
   }
+
+  // Special tree / obstacle drawings for the non-parkland biomes (top-down, world units = metres).
+  function blobPath(ctx, x, y, r, n, jag, seed) {
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const rr = r * (1 - jag + jag * 2 * hash2(i % n, (seed * 1000) | 0, 5));
+      const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath();
+  }
+  const TREE_DRAW = {
+    cactus(ctx, t, tint) {
+      const g = `rgb(${54 + tint},${128 + tint},${66})`;
+      ctx.strokeStyle = g;
+      ctx.lineCap = 'round';
+      const arms = 2 + Math.floor((t.tint + 1) * 1.2);
+      for (let i = 0; i < arms; i++) {
+        const a = t.tint * 3 + i * 2.1;
+        ctx.lineWidth = t.r * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y);
+        ctx.lineTo(t.x + Math.cos(a) * t.r * 1.3, t.y + Math.sin(a) * t.r * 1.3);
+        ctx.stroke();
+      }
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r * 0.62, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(190,230,170,0.5)';
+      ctx.lineWidth = 0.08;
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y);
+        ctx.lineTo(t.x + Math.cos(a) * t.r * 0.6, t.y + Math.sin(a) * t.r * 0.6);
+        ctx.stroke();
+      }
+    },
+    palm(ctx, t, tint) {
+      const n = 8;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + t.tint;
+        const ex = t.x + Math.cos(a) * t.r, ey = t.y + Math.sin(a) * t.r;
+        const nx = -Math.sin(a) * t.r * 0.22, ny = Math.cos(a) * t.r * 0.22;
+        ctx.fillStyle = `rgb(${50 + tint},${122 + tint},${48})`;
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y);
+        ctx.quadraticCurveTo((t.x + ex) / 2 + nx, (t.y + ey) / 2 + ny, ex, ey);
+        ctx.quadraticCurveTo((t.x + ex) / 2 - nx, (t.y + ey) / 2 - ny, t.x, t.y);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(170,210,110,0.6)';
+        ctx.lineWidth = 0.1;
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#6b4a2b';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r * 0.14, 0, Math.PI * 2);
+      ctx.fill();
+    },
+    rock(ctx, t, tint, biome) {
+      const base = biome === 'volcanic' ? [58, 52, 60] : [176, 118, 82];
+      ctx.fillStyle = `rgb(${base[0] + tint},${base[1] + tint},${base[2] + tint})`;
+      blobPath(ctx, t.x, t.y, t.r, 7, 0.28, t.tint);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.14)';
+      blobPath(ctx, t.x - t.r * 0.25, t.y - t.r * 0.3, t.r * 0.5, 6, 0.3, t.tint + 1);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 0.08;
+      blobPath(ctx, t.x, t.y, t.r, 7, 0.28, t.tint);
+      ctx.stroke();
+    },
+    crystal(ctx, t) {
+      const hue = t.tint > 0 ? [120, 250, 255] : [255, 120, 240];
+      ctx.fillStyle = `rgba(${hue[0]},${hue[1]},${hue[2]},0.16)`;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r * 1.9, 0, Math.PI * 2);
+      ctx.fill();
+      const shards = 5;
+      for (let i = 0; i < shards; i++) {
+        const a = t.tint * 4 + i * 1.26;
+        const len = t.r * (0.7 + 0.5 * hash2(i, (t.x * 10) | 0, 9));
+        const w = t.r * 0.28;
+        const cx = t.x + Math.cos(a) * len * 0.35, cy = t.y + Math.sin(a) * len * 0.35;
+        const tipx = t.x + Math.cos(a) * len, tipy = t.y + Math.sin(a) * len;
+        const nx = -Math.sin(a) * w, ny = Math.cos(a) * w;
+        ctx.fillStyle = `rgb(${hue[0] * 0.55},${hue[1] * 0.55},${hue[2] * 0.7})`;
+        ctx.beginPath();
+        ctx.moveTo(t.x + nx * 0.4, t.y + ny * 0.4);
+        ctx.lineTo(cx + nx, cy + ny);
+        ctx.lineTo(tipx, tipy);
+        ctx.lineTo(cx - nx, cy - ny);
+        ctx.lineTo(t.x - nx * 0.4, t.y - ny * 0.4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = `rgba(${hue[0]},${hue[1]},${hue[2]},0.85)`;
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y);
+        ctx.lineTo(cx + nx, cy + ny);
+        ctx.lineTo(tipx, tipy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    },
+    mushroom(ctx, t, tint) {
+      const g = ctx.createRadialGradient(t.x - t.r * 0.3, t.y - t.r * 0.3, t.r * 0.1, t.x, t.y, t.r);
+      g.addColorStop(0, `rgb(${240},${150 + tint},${90})`);
+      g.addColorStop(1, `rgb(${170 + tint},${50},${120})`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,245,230,0.85)';
+      for (let i = 0; i < 6; i++) {
+        const a = i * 1.9 + t.tint, d = t.r * (0.3 + 0.4 * hash2(i, (t.y * 10) | 0, 4));
+        ctx.beginPath();
+        ctx.arc(t.x + Math.cos(a) * d, t.y + Math.sin(a) * d, t.r * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    gorse(ctx, t, tint) {
+      ctx.fillStyle = `rgb(${52 + tint},${92 + tint},${40})`;
+      blobPath(ctx, t.x, t.y, t.r, 10, 0.25, t.tint);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(250,215,60,0.9)';
+      for (let i = 0; i < 9; i++) {
+        const a = i * 2.4 + t.tint, d = t.r * 0.75 * hash2(i, (t.x * 7) | 0, 2);
+        ctx.beginPath();
+        ctx.arc(t.x + Math.cos(a) * d, t.y + Math.sin(a) * d, 0.18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    snowpine(ctx, t, tint) {
+      for (let l = 0; l < 3; l++) {
+        const rr = t.r * (1 - l * 0.28);
+        ctx.beginPath();
+        for (let p = 0; p <= 18; p++) {
+          const a = (p / 18) * Math.PI * 2 + l * 0.35 + t.tint;
+          const rad = p % 2 === 0 ? rr : rr * 0.62;
+          const px = t.x + Math.cos(a) * rad - l * 0.18 * t.r, py = t.y + Math.sin(a) * rad - l * 0.22 * t.r;
+          p ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.fillStyle = l === 0 ? `rgb(${30 + tint * 0.5},${70 + tint},${56})` : `rgba(245,250,255,${0.55 + l * 0.2})`;
+        ctx.fill();
+      }
+    },
+    birch(ctx, t, tint, biome) {
+      // Bare winter birch: pale branches.
+      ctx.strokeStyle = 'rgba(235,235,230,0.95)';
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 7; i++) {
+        const a = i * 0.9 + t.tint;
+        ctx.lineWidth = 0.22;
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y);
+        const mx = t.x + Math.cos(a) * t.r * 0.6, my = t.y + Math.sin(a) * t.r * 0.6;
+        ctx.lineTo(mx, my);
+        ctx.lineTo(mx + Math.cos(a + 0.5) * t.r * 0.4, my + Math.sin(a + 0.5) * t.r * 0.4);
+        ctx.moveTo(mx, my);
+        ctx.lineTo(mx + Math.cos(a - 0.5) * t.r * 0.4, my + Math.sin(a - 0.5) * t.r * 0.4);
+        ctx.stroke();
+      }
+    },
+    dead(ctx, t, tint) {
+      ctx.strokeStyle = `rgb(${70 + tint},${60 + tint},${56})`;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 6; i++) {
+        const a = i * 1.05 + t.tint * 2;
+        ctx.lineWidth = 0.3;
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y);
+        const mx = t.x + Math.cos(a) * t.r * 0.55, my = t.y + Math.sin(a) * t.r * 0.55;
+        ctx.lineTo(mx, my);
+        ctx.lineTo(mx + Math.cos(a + 0.6) * t.r * 0.45, my + Math.sin(a + 0.6) * t.r * 0.45);
+        ctx.moveTo(mx, my);
+        ctx.lineTo(mx + Math.cos(a - 0.4) * t.r * 0.5, my + Math.sin(a - 0.4) * t.r * 0.5);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,120,40,0.35)';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    },
+  };
 
   function buildHoleLayers(hole) {
     const ppm = Math.min(3, Math.sqrt(2.4e6 / (hole.W * hole.L)));
@@ -203,7 +408,7 @@
       const cam = game.cam;
       const hole = game.hole;
       this.setScreen();
-      ctx.fillStyle = '#35602e';
+      ctx.fillStyle = (hole && hole.biome && hole.biome.bg) || '#35602e';
       ctx.fillRect(0, 0, this.vw, this.vh);
       if (!hole || !game.layers) return;
 

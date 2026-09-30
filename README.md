@@ -26,6 +26,22 @@ static web server.
 **Desktop:** mouse to aim, click or Space to swing, ←/→ for fine aim, ↑/↓ for clubs, `S` for the next shot type,
 wheel to zoom, `V` for overview, `C` for the scorecard, `M` to mute.
 
+## Worlds
+
+Every seed plays in one of six environments (the menu preview shows which; roll the dice for another):
+
+| World | Look | Twist |
+| --- | --- | --- |
+| 🌳 Parkland | Classic tree-lined course | — |
+| 🌵 Desert | Irrigated fairways, waste areas, cacti, oases | Hot thin air (+3% carry), baked fairways, firm waste areas |
+| 👽 Alien world | Glowgrass, blue moss, crystals, giant mushrooms, acid pools | Low gravity (~40% more carry, longer holes), meteor craters |
+| 🌊 Coastal links | Dunes, golden fescue, gorse, pot bunkers | Strong sea wind, firm running ground |
+| ❄️ Winter | Snow, snowy pines, bare birches | Snow grabs the ball; frozen ponds are playable and slippery |
+| 🌋 Volcanic | Ash, black sand, dead trees, basalt | Lava lakes, craters, big elevation changes |
+
+Biomes live in `js/biomes.js` (palette, trees, terrain shaping, physics environment, names). A seed's biome
+comes from its own hash, so parkland seeds keep the same layouts they always had.
+
 ## What's simulated
 
 - **Flight:** quadratic drag, Magnus lift from backspin, sidespin curve (slices and hooks),
@@ -66,6 +82,7 @@ layer around the green.
 | File | Purpose |
 | --- | --- |
 | `js/util.js` | Seeded RNG, value noise, math helpers |
+| `js/biomes.js` | World definitions: palettes, trees, terrain shaping, physics, names |
 | `js/course.js` | Hole/course generation and terrain queries |
 | `js/physics.js` | Clubs, ball flight, bounces, rolling, trees, cup |
 | `js/render.js` | Terrain rasteriser and per-frame drawing |

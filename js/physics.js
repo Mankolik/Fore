@@ -4,9 +4,12 @@
   const T = Golf.T;
   const { clamp } = Golf.util;
 
-  const G = 9.81;
-  const KD = 0.0043; // 0.5 * rho * Cd * A / m  (Cd ~ 0.23)
-  const KL = 0.0187; // 0.5 * rho * A / m, multiplied by a lift coefficient
+  // Earth defaults; setEnvironment() swaps these per course biome (gravity, air density, surfaces).
+  let G = 9.81;
+  let KD = 0.0043; // 0.5 * rho * Cd * A / m  (Cd ~ 0.23)
+  let KL = 0.0187; // 0.5 * rho * A / m, multiplied by a lift coefficient
+  let ENV_WIND = 1;
+  let ICE = false; // water is frozen: playable, slippery ice
   const CUP_R = 0.09; // generous capture radius for the ball centre
   const DT = 1 / 240;
   const WIND_K = 1.4; // effective wind strength at ball height (tuned so head/tail winds bite realistically)
@@ -117,7 +120,7 @@
 
   // How each surface treats the ball.  e: bounce restitution, mu: share of tangential speed lost per impact,
   // roll: rolling resistance coefficient, grab: how much backspin bites.
-  const SURF = [];
+  let SURF = [];
   SURF[T.OOB] = { e: 0.22, mu: 0.6, roll: 0.45, grab: 0.2 };
   SURF[T.DEEP] = { e: 0.15, mu: 0.75, roll: 0.75, grab: 0.1 };
   SURF[T.ROUGH] = { e: 0.24, mu: 0.58, roll: 0.36, grab: 0.25 };
@@ -128,6 +131,19 @@
   SURF[T.GREEN] = { e: 0.3, mu: 0.38, roll: 0.065, grab: 1.0 };
   SURF[T.SAND] = { e: 0.04, mu: 0.95, roll: 1.6, grab: 0.1 };
   SURF[T.WATER] = { e: 0, mu: 1, roll: 5, grab: 0 };
+  const BASE_SURF = SURF.slice();
+  let envId = 'earth';
+  function setEnvironment(env = {}, id = 'custom') {
+    G = 9.81 * (env.gravity ?? 1);
+    KD = 0.0043 * (env.air ?? 1);
+    KL = 0.0187 * (env.air ?? 1);
+    ENV_WIND = env.wind ?? 1;
+    ICE = !!env.ice;
+    SURF = BASE_SURF.slice();
+    for (const k in env.surf || {}) SURF[k] = env.surf[k];
+    if (id !== envId) tables.clear(); // distance tables depend on the environment
+    envId = id;
+  }
 
   // Lie effects on the next shot.
   function lieEffect(terrain, club) {
@@ -350,7 +366,7 @@
       side = e * 0.065 * k;
     }
     // Gusts: the wind this shot actually meets varies around the forecast.
-    ball.windK = LONG_GAME(shot) ? WIND_K : 1;
+    ball.windK = (LONG_GAME(shot) ? WIND_K : 1) * ENV_WIND;
     ball.gust = LONG_GAME(shot) ? { k: Math.max(0.3, 1 + gauss(rand) * 0.22), a: gauss(rand) * 0.14 } : null;
     const vh = speed * Math.cos(launchA);
     ball.vx = Math.cos(dir) * vh;
@@ -418,7 +434,7 @@
   function impact(ball, hole, gh, events, rand) {
     const terr = hole.terrainAt(ball.x, ball.y);
     ball.z = gh;
-    if (terr === T.WATER) {
+    if (terr === T.WATER && !ICE) {
       ball.state = 'water';
       events.push({ type: 'water', x: ball.x, y: ball.y });
       return;
@@ -461,7 +477,7 @@
 
   function rollStep(ball, hole, dt, events, rand) {
     const terr = hole.terrainAt(ball.x, ball.y);
-    if (terr === T.WATER) {
+    if (terr === T.WATER && !ICE) {
       ball.state = 'water';
       events.push({ type: 'water', x: ball.x, y: ball.y });
       return;
@@ -536,8 +552,9 @@
       const zt = ball.z - t.base;
       if (zt > t.h) continue;
       // Pines taper toward the top.
-      const canopyBottom = t.h * (t.pine ? 0.2 : 0.35);
-      const rAt = t.pine ? t.r * clamp(1.1 - (zt - canopyBottom) / (t.h - canopyBottom), 0.15, 1) : t.r;
+      const canopyBottom = t.h * (t.cb ?? (t.pine ? 0.2 : 0.35));
+      const taper = t.taper ?? t.pine;
+      const rAt = taper ? t.r * clamp(1.1 - (zt - canopyBottom) / (t.h - canopyBottom + 1e-6), 0.15, 1) : t.r;
       if (zt > canopyBottom && d < rAt) {
         if (!ball.hitTrees.has(t)) {
           ball.hitTrees.add(t);
@@ -581,7 +598,7 @@
   }
 
   Golf.physics = {
-    G, CUP_R, CLUBS, PUTTER, SURF, SHOTS, SHOT_ORDER,
+    get G() { return G; }, setEnvironment, CUP_R, CLUBS, PUTTER, SURF, SHOTS, SHOT_ORDER,
     lieEffect, mishitRisk, swingSize, sweetSpot, simulateLine, powerToReach, carryTable, shotTable, fullCarry, speedFractionForPower, flatCarry, shotsFor, clubsFor, shotAllowed, shotParams, shotDistance,
     createBall, launch, step,
   };

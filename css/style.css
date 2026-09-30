@@ -136,10 +136,13 @@ button {
   transform: translateX(-50%);
   top: 120px;
   background: var(--panel);
-  border-radius: 999px;
+  border-radius: 14px;
   padding: 5px 12px;
   font-size: 13px;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  max-width: calc(100vw - 24px);
+  width: max-content;
   pointer-events: none;
   transition: opacity 0.3s;
 }

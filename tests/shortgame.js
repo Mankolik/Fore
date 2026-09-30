@@ -1,7 +1,7 @@
 // Short-game balance harness: plays greenside shots on real generated holes with human-like
 // timing noise and reports how close each shot type finishes.  Run: node tests/shortgame.js
 const path = require('path');
-for (const f of ['util', 'course', 'physics']) require(path.join(__dirname, '..', 'js', f + '.js'));
+for (const f of ['util', 'biomes', 'course', 'physics']) require(path.join(__dirname, '..', 'js', f + '.js'));
 const Golf = globalThis.Golf;
 const { T, physics: P } = Golf;
 

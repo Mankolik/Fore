@@ -1,6 +1,6 @@
 // Headless sanity tests for course generation and physics.  Run with: node tests/run.js
 const path = require('path');
-for (const f of ['util', 'course', 'physics']) require(path.join(__dirname, '..', 'js', f + '.js'));
+for (const f of ['util', 'biomes', 'course', 'physics']) require(path.join(__dirname, '..', 'js', f + '.js'));
 const Golf = globalThis.Golf;
 const { T, physics: P } = Golf;
 
@@ -27,13 +27,47 @@ for (const seed of seeds) {
     check(h.terrainAt(h.pin.x, h.pin.y) === T.GREEN, `${tag}: pin is on the green`);
     check(h.sampleIdx(h.fGreen, h.pin.x, h.pin.y) < -2, `${tag}: pin away from green edge`);
     check(h.sampleIdx(h.fWater, h.tee.x, h.tee.y) > 15, `${tag}: no water on the tee`);
-    const lens = { 3: [85, 210], 4: [245, 420], 5: [440, 545] }[h.par];
-    check(h.length >= lens[0] && h.length <= lens[1], `${tag}: par ${h.par} length ${h.length.toFixed(0)}`);
+    const lens = { 3: [85, 210], 4: [245, 420], 5: [440, 545] }[h.par].map((v) => v * c.biome.gen.lengthK);
+    check(h.length >= lens[0] - 1 && h.length <= lens[1] + 1, `${tag}: par ${h.par} length ${h.length.toFixed(0)}`);
     for (const t of h.trees) {
       const terr = h.terrainAt(t.x, t.y);
       check(terr !== T.FAIRWAY && terr !== T.GREEN && terr !== T.WATER && terr !== T.TEE, `${tag}: tree on ${Golf.TERRAIN_NAMES[terr]}`);
     }
   }
+}
+
+// --- Biomes: every environment generates valid, playable holes -----------------------------------
+{
+  const found = {};
+  for (let k = 0; k < 400 && Object.keys(found).length < Golf.BIOME_ORDER.length; k++) {
+    const b = Golf.biomeForSeed('biome' + k);
+    if (!found[b.id]) found[b.id] = 'biome' + k;
+  }
+  check(Object.keys(found).length === Golf.BIOME_ORDER.length, `all biomes reachable from seeds (${Object.keys(found).join(', ')})`);
+  for (const [id, seed] of Object.entries(found)) {
+    const c = Golf.generateCourse(seed);
+    check(c.biome.id === id && Golf.generateCourse(seed).biome.id === id, `${id}: deterministic per seed`);
+    for (let i = 0; i < 9; i += 2) {
+      const h = c.getHole(i);
+      check(h.terrainAt(h.tee.x, h.tee.y) === T.TEE && h.terrainAt(h.pin.x, h.pin.y) === T.GREEN, `${id} hole ${i + 1}: tee and pin valid`);
+      check(h.trees.every((t) => t.kind && t.h > 0 && t.r > 0), `${id} hole ${i + 1}: trees styled`);
+    }
+    // Physics environment: meters stay linear and putts accurate in every biome.
+    P.setEnvironment(c.biome.env, id);
+    const full = P.shotDistance(8, 'full', T.FAIRWAY, 1).carry, half = P.shotDistance(8, 'full', T.FAIRWAY, 0.5).carry;
+    check(Math.abs(half - full / 2) < 3, `${id}: half power carries half (${half.toFixed(0)} of ${full.toFixed(0)})`);
+  }
+  P.setEnvironment({}, 'earth');
+}
+// Winter ice: a ball rolling onto a frozen pond keeps going instead of being a hazard.
+{
+  P.setEnvironment(Golf.BIOMES.winter.env, 'winter');
+  const ice = { W: 999, L: 999, height: () => 0, grad: () => ({ x: 0, y: 0 }), terrainAt: () => T.WATER, treesNear: () => [], wind: { x: 0, y: 0 }, pin: { x: -9, y: -9 } };
+  const b = P.createBall(500, 900, ice);
+  b.vx = 0; b.vy = -5; b.state = 'roll';
+  while (b.state === 'roll') P.step(b, ice, 1 / 30);
+  check(b.state === 'rest' && 900 - b.y > 30, `ice is playable and slippery (slid ${(900 - b.y).toFixed(0)} m)`);
+  P.setEnvironment({}, 'earth');
 }
 
 // --- Flight --------------------------------------------------------------------------------------
