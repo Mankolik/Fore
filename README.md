@@ -39,6 +39,11 @@ wheel to zoom, `V` for overview, `C` for the scorecard, `M` to mute.
   are nearly hopeless, hybrids handle rough, 56°/60° wedges handle sand). A well-timed swing cuts the risk. Mishits
   come out fat, thin, topped or bladed. Each shot type also has its own distance spread: chips are the tightest,
   flops the loosest. The timing window depends on swing size, so a flop is as demanding as a full swing.
+- **Long game:** full swings have natural dispersion by club (driver ±1.3° down to ±0.7° for wedges), longer clubs
+  punish mistimed strikes more, and the perfect-timing window is tighter on full swings. Wind gusts ±20% per shot
+  and bites harder on full shots; fairways pinch in around the driving zone. Lies vary: flyers and balls sitting down
+  in the rough, divots on fairways, plugged bunker lies. `node tests/longgame.js` and `node tests/putting.js` are the
+  matching balance harnesses (putting is deliberately left as-is).
 - **Reading the shot:** the chip/punch pin marker accounts for the grass and the up/downhill along your line (not
   the side-slope break, which you read from the arrows). `node tests/shortgame.js` runs a balance harness that plays
   thousands of greenside shots with human-like timing noise.

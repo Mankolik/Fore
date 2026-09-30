@@ -551,7 +551,7 @@
     ctx.beginPath();
     ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
     ctx.stroke();
-    if (wind.speed < 0.3) return;
+    if (wind.speed < 1.2) return; // matches the 'calm' label
     const a = Math.atan2(wind.y, wind.x);
     const len = 8 + Math.min(1, wind.speed / 8) * 8;
     ctx.save();

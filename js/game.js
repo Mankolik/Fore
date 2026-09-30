@@ -25,7 +25,6 @@
   // full power), so short shots get a slower marker and a wider timing window rather than a frantic one.
   const RETURN_TIME = (p) => 0.5 + 0.22 * p;
   const OVERSHOOT = -0.16; // how far past the line the marker travels before a forced mishit
-  const SWEET = 0.02; // half-width of the perfect window
   const TOP_ANGLE = 3.7; // club angle at the top of a full backswing (radians)
   const MAX_STROKES = 10;
   const SAVE_KEY = 'golfy.save.v1';
@@ -33,7 +32,7 @@
   const game = {
     course: null, holeIdx: 0, hole: null, layers: null, minimap: null,
     ball: null, strokes: 0, scores: [], phase: 'menu', inRound: false,
-    aim: 0, pinAim: 0, pinAimT: 0, clubIdx: 0, shot: 'full', metric: 'carry', carryRatio: 1, returnSpeed: 1.4, putterRange: 10,
+    aim: 0, sweet: 0.02, lieCond: null, pinAim: 0, pinAimT: 0, clubIdx: 0, shot: 'full', metric: 'carry', carryRatio: 1, returnSpeed: 1.4, putterRange: 10,
     power: 0, marker: 0, lockedPower: 0, topHold: 0, error: 0,
     clubAngle: 0, strikeT: 0, followT: 0, carryShown: false,
     cam: { x: 0, y: 0, scale: 3 }, flightScale: 3, userZoom: 1, overview: false,
@@ -121,6 +120,8 @@
     b.vx = b.vy = b.vz = 0;
     b.z = hole.height(b.x, b.y);
     game.lie = hole.terrainAt(b.x, b.y);
+    game.lieCond = rollLieCondition(game.lie);
+    if (game.lieCond) setHint(`${game.lieCond.label} — ${game.lieCond.note}`, 3200);
     const dist = distToPin();
     game.aim = Math.atan2(hole.pin.y - b.y, hole.pin.x - b.x);
     const pick = pickShot(dist);
@@ -134,6 +135,23 @@
     game.carryShown = false;
     updateClub();
     updateHud();
+  }
+
+  // Not every lie is equal: flyers, balls sitting down, divots and plugged lies.  They are shown to the
+  // player but deliberately left out of the pin mark: allowing for them is part of the skill.
+  function rollLieCondition(lie) {
+    const r = Math.random();
+    if (lie === T.ROUGH) {
+      if (r < 0.3) return { label: 'Flyer lie', note: 'jumps ~6% further with little spin', speed: 1.06, spin: 0.5, risk: 0 };
+      if (r < 0.55) return { label: 'Sitting down', note: 'about 10% shorter and harder to strike', speed: 0.9, spin: 0.8, risk: 0.08 };
+    } else if (lie === T.DEEP) {
+      if (r < 0.4) return { label: 'Buried in the grass', note: 'about 12% shorter, easy to mishit', speed: 0.88, spin: 0.7, risk: 0.1 };
+    } else if (lie === T.FAIRWAY) {
+      if (r < 0.07) return { label: 'In a divot', note: 'about 7% shorter, harder to strike cleanly', speed: 0.93, spin: 0.8, risk: 0.1 };
+    } else if (lie === T.SAND) {
+      if (r < 0.2) return { label: 'Plugged lie', note: 'no spin, comes out ~30% short', speed: 0.7, spin: 0.5, risk: 0.12 };
+    }
+    return null;
   }
 
   function distToPin() {
@@ -277,7 +295,7 @@
         game.pinPower = (lo + hi) / 2;
       }
       els.clubTitle.textContent = c.name;
-      const risk = P.mishitRisk(idx, game.shot, game.lie);
+      const risk = Math.min(0.97, P.mishitRisk(idx, game.shot, game.lie) + (game.lieCond ? game.lieCond.risk : 0));
       const distLabel = `${Math.round(game.lieFull)} m ${game.metric}${game.lieFx.label ? ' (' + game.lieFx.label + ')' : ''}`;
       els.clubDist.textContent = risk >= 0.05 ? `⚠ ${Math.round(risk * 100)}% mishit · ${Math.round(game.lieFull)} m` : distLabel;
       els.clubDist.classList.toggle('risky', risk >= 0.25);
@@ -394,12 +412,14 @@
     // Timing depends on how big the swing is, not how far the ball goes: a flop is a big, fast swing.
     const sw = P.CLUBS[game.clubIdx].putter ? game.lockedPower : P.swingSize(game.shot, game.lockedPower);
     game.returnSpeed = Math.max(0.12, sw / RETURN_TIME(sw));
+    game.sweet = P.CLUBS[game.clubIdx].putter ? 0.02 : P.sweetSpot(sw, game.shot); // putting keeps its original feel
     game.phase = 'downswing';
     setHint('Tap at the white line!');
   }
   function strike(m) {
     let e = 0;
-    if (Math.abs(m) > SWEET) e = Math.sign(m) * Math.min(1, (Math.abs(m) - SWEET) / (Math.abs(OVERSHOOT) - SWEET));
+    const sweet = game.sweet;
+    if (Math.abs(m) > sweet) e = Math.sign(m) * Math.min(1, (Math.abs(m) - sweet) / (Math.abs(OVERSHOOT) - sweet));
     game.error = e;
     game.marker = m;
     game.phase = 'strike';
@@ -415,7 +435,7 @@
     const c = P.CLUBS[game.clubIdx];
     game.shotStart = { x: b.x, y: b.y };
     const lie = game.lie;
-    const res = P.launch(b, game.hole, game.clubIdx, game.lockedPower, game.error, game.aim, game.putterRange, game.shot);
+    const res = P.launch(b, game.hole, game.clubIdx, game.lockedPower, game.error, game.aim, game.putterRange, game.shot, Math.random, game.lieCond);
     if (res && res.mishit) {
       setHint(MISHIT_TEXT[res.mishit], 2800);
       if (navigator.vibrate) try { navigator.vibrate([30, 40, 30]); } catch (e) { /* ignore */ }
@@ -749,10 +769,13 @@
     const d = totalVsPar();
     setText(els.score, 'sc', `Total ${fmtDiff(d)}`);
     els.score.className = 'small ' + (d < 0 ? 'under' : d > 0 ? 'over' : '');
-    setText(els.windLabel, 'wl', `${hole.wind.speed.toFixed(1)} m/s`);
+    // Gusts vary each shot by about ±20% around the forecast.
+    const ws = hole.wind.speed;
+    setText(els.windLabel, 'wl', ws < 1.2 ? 'calm' : `${Math.max(0, Math.round(ws * 0.8))}–${Math.round(ws * 1.2)} m/s`);
     const b = game.ball;
     const terr = hole.terrainAt(b.x, b.y);
-    setText(els.lie, 'lie', Golf.TERRAIN_NAMES[terr]);
+    const cond = game.lieCond && game.phase !== 'flight' && game.phase !== 'settle' ? ` (${game.lieCond.label.toLowerCase()})` : '';
+    setText(els.lie, 'lie', Golf.TERRAIN_NAMES[terr] + cond);
     const dist = distToPin();
     setText(els.dist, 'dist', dist < 10 ? `${dist.toFixed(1)} m to pin` : `${Math.round(dist)} m to pin`);
   }
@@ -856,7 +879,7 @@
     }
     // Sweet spot line.
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.fillRect(u(-SWEET), by, u(SWEET) - u(-SWEET), bh);
+    ctx.fillRect(u(-game.sweet), by, u(game.sweet) - u(-game.sweet), bh);
     ctx.fillStyle = '#fff';
     ctx.fillRect(u(0) - 1, by - 3, 2, bh + 6);
     // Moving marker.

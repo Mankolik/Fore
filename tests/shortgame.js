@@ -88,7 +88,8 @@ for (const seed of SEEDS) {
           const sw = P.swingSize(shot, power);
           const retSpeed = Math.max(0.12, sw / (0.5 + 0.22 * sw));
           const m = gauss() * TAP_JITTER * retSpeed;
-          let e = 0; if (Math.abs(m) > 0.02) e = Math.sign(m) * Math.min(1, (Math.abs(m) - 0.02) / 0.14);
+          const swt = P.sweetSpot(sw, shot);
+          let e = 0; if (Math.abs(m) > swt) e = Math.sign(m) * Math.min(1, (Math.abs(m) - swt) / (0.16 - swt));
           const b = P.createBall(x, y, hole);
           P.launch(b, hole, i, power, e, aim, 20, shot, rand);
           let n = 0; while (!['rest', 'holed', 'water'].includes(b.state) && n++ < 3000) P.step(b, hole, 1 / 30, rand);

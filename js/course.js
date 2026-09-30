@@ -199,9 +199,12 @@
     hole.length = S;
 
     // --- Fairway width profile.
-    const baseHW = par === 3 ? rng.float(11, 14) : rng.float(15, 20);
+    // Fairways pinch in around the driving zone, so driver vs. a shorter club off the tee is a real choice.
+    const baseHW = par === 3 ? rng.float(11, 14) : rng.float(14, 18);
+    const pinchS = rng.float(215, 255), pinchK = par === 3 ? 1 : rng.float(0.78, 0.95);
     const hwAt = (s) => {
       let hw = baseHW + noise.value(s / 55, 7.7) * 3.5;
+      hw *= 1 - (1 - pinchK) * Math.exp(-(((s - pinchS) / 28) ** 2));
       hw *= lerp(1, 0.75, smoothstep(S - 80, S - 20, s));
       return hw;
     };
@@ -497,7 +500,7 @@
     }
 
     // --- Wind.
-    const wSpeed = Math.pow(rng.next(), 1.4) * 8;
+    const wSpeed = Math.pow(rng.next(), 1.15) * 9;
     const wAng = rng.float(0, Math.PI * 2);
     hole.wind = { x: Math.cos(wAng) * wSpeed, y: Math.sin(wAng) * wSpeed, speed: wSpeed };
     return hole;

@@ -9,6 +9,7 @@
   const KL = 0.0187; // 0.5 * rho * A / m, multiplied by a lift coefficient
   const CUP_R = 0.09; // generous capture radius for the ball centre
   const DT = 1 / 240;
+  const WIND_K = 1.4; // effective wind strength at ball height (tuned so head/tail winds bite realistically)
 
   // speed (m/s), launch angle (deg), lift coefficient from backspin, bite on landing, chip speed (m/s).
   // Speeds are solved for typical carries; chip speeds for bump-and-run totals (see tests/run.js).
@@ -67,6 +68,17 @@
     if (shot === 'punch') r *= 0.6;
     else if (shot === 'three') r *= 0.8;
     return Math.min(0.97, r);
+  }
+  // Full swings: even a perfect strike wanders a little (degrees, sd), and mistimed strikes hurt more
+  // with longer clubs.  Short-game shots keep their own, gentler model.
+  const DISPERSION = { driver: 1.3, wood: 1.2, hybrid: 1.1, long: 1.05, iron: 0.9, wedge: 0.75, sand: 0.7 };
+  const LENGTH_K = { driver: 1.35, wood: 1.25, hybrid: 1.15, long: 1.15, iron: 1, wedge: 0.85, sand: 0.8 };
+  const FULL_SPREAD = { driver: 0.03, wood: 0.028, hybrid: 0.025, long: 0.025, iron: 0.022, wedge: 0.02, sand: 0.02 };
+  const LONG_GAME = (shot) => shot === 'full' || shot === 'punch';
+  // The perfect window narrows for big long-game swings; the short game and putting keep the wide one.
+  function sweetSpot(swing, shot = 'full') {
+    if (!LONG_GAME(shot)) return 0.02;
+    return 0.02 - 0.009 * clamp((swing - 0.6) / 0.4, 0, 1);
   }
   function gauss(rand) {
     return Math.sqrt(-2 * Math.log(rand() + 1e-9)) * Math.cos(2 * Math.PI * rand());
@@ -278,7 +290,8 @@
 
   // power 0..1(+), accuracy error -1..1 (+ = slice to the right), aim angle in radians (screen space).
   // Returns { mishit } where mishit is null, 'fat', 'thin', 'top' or 'blade'.
-  function launch(ball, hole, clubIdx, power, error, aim, putterRange, shot = 'full', rand = Math.random) {
+  // lieMod (optional): { speed, spin, risk } for lie conditions such as flyers, divots or plugged balls.
+  function launch(ball, hole, clubIdx, power, error, aim, putterRange, shot = 'full', rand = Math.random, lieMod = null) {
     const c = CLUBS[clubIdx];
     const lie = hole.terrainAt(ball.x, ball.y);
     const le = lieEffect(lie, clubIdx);
@@ -305,7 +318,10 @@
     const p = shotParams(clubIdx, shot);
     const sh = SHOTS[shot] || SHOTS.full;
     let speed = p.speed * speedFractionForPower(clubIdx, power, shot) * le.speed;
-    speed *= (1 - sh.loss * Math.min(1, Math.abs(error))) * (1 + gauss(rand) * sh.spread);
+    const g = GROUP[c.id];
+    const spread = LONG_GAME(shot) ? FULL_SPREAD[g] : sh.spread;
+    speed *= (1 - sh.loss * Math.min(1, Math.abs(error))) * (1 + gauss(rand) * spread);
+    if (lieMod) speed *= lieMod.speed;
     let launchDeg = p.launch + (lie === T.SAND ? 4 : 0);
     let spin = p.lift * (0.6 + 0.4 * le.spin);
     // Lofted shots rely on spin to stop, and spin varies strike to strike (and dies out of the rough).
@@ -313,9 +329,9 @@
     if (shot === 'flop' || shot === 'three') bite *= (0.6 + 0.8 * rand()) * (lie === T.ROUGH || lie === T.DEEP ? 0.6 : 1);
     // Poor strike?  Timing matters: a perfect swing keeps only a third of the risk.
     let mishit = null;
-    const risk = mishitRisk(clubIdx, shot, lie) * (0.35 + 0.65 * Math.min(1, Math.abs(error) * 2.5));
+    if (lieMod) { spin *= lieMod.spin; bite *= lieMod.spin; }
+    const risk = Math.min(0.97, mishitRisk(clubIdx, shot, lie) + (lieMod ? lieMod.risk : 0)) * (0.35 + 0.65 * Math.min(1, Math.abs(error) * 2.5));
     if (rand() < risk) {
-      const g = GROUP[c.id];
       if (lie === T.SAND) mishit = rand() < 0.7 ? 'fat' : 'thin';
       else if (shot === 'flop') mishit = 'blade';
       else if (g === 'driver' || g === 'wood') mishit = rand() < 0.6 ? 'top' : 'fat';
@@ -326,13 +342,22 @@
       else if (mishit === 'top') { launchDeg = 2 + rand() * 3; spin *= 0.1; bite = 0; speed *= 0.45 + rand() * 0.25; }
     }
     const launchA = (launchDeg * Math.PI) / 180;
-    const dir = aim + e * 0.03;
+    let dir = aim + e * 0.03;
+    let side = e * 0.05;
+    if (LONG_GAME(shot)) {
+      const k = LENGTH_K[g] * (shot === 'punch' ? 0.8 : 1);
+      dir = aim + e * 0.045 * k + (gauss(rand) * DISPERSION[g] * (shot === 'punch' ? 0.8 : 1) * Math.PI) / 180;
+      side = e * 0.065 * k;
+    }
+    // Gusts: the wind this shot actually meets varies around the forecast.
+    ball.windK = LONG_GAME(shot) ? WIND_K : 1;
+    ball.gust = LONG_GAME(shot) ? { k: Math.max(0.3, 1 + gauss(rand) * 0.22), a: gauss(rand) * 0.14 } : null;
     const vh = speed * Math.cos(launchA);
     ball.vx = Math.cos(dir) * vh;
     ball.vy = Math.sin(dir) * vh;
     ball.vz = speed * Math.sin(launchA);
     ball.spin = spin;
-    ball.side = e * 0.05;
+    ball.side = side;
     ball.bite = bite;
     ball.z = hole.height(ball.x, ball.y) + 0.02;
     ball.state = 'air';
@@ -357,8 +382,13 @@
   function airStep(ball, hole, dt, events, rand) {
     const ground = hole.height(ball.x, ball.y);
     const agl = ball.z - ground;
-    const windScale = clamp(0.45 + agl / 25, 0.45, 1);
-    const rx = ball.vx - hole.wind.x * windScale, ry = ball.vy - hole.wind.y * windScale, rz = ball.vz;
+    const windScale = clamp(0.45 + agl / 25, 0.45, 1) * (ball.windK || 1) * (ball.gust ? ball.gust.k : 1);
+    let wx = hole.wind.x, wy = hole.wind.y;
+    if (ball.gust && ball.gust.a) {
+      const c = Math.cos(ball.gust.a), s = Math.sin(ball.gust.a);
+      [wx, wy] = [wx * c - wy * s, wx * s + wy * c];
+    }
+    const rx = ball.vx - wx * windScale, ry = ball.vy - wy * windScale, rz = ball.vz;
     const sp = Math.hypot(rx, ry, rz) || 1e-6;
     const hsp = Math.hypot(rx, ry) || 1e-6;
     // Drag.
@@ -552,7 +582,7 @@
 
   Golf.physics = {
     G, CUP_R, CLUBS, PUTTER, SURF, SHOTS, SHOT_ORDER,
-    lieEffect, mishitRisk, swingSize, simulateLine, powerToReach, carryTable, shotTable, fullCarry, speedFractionForPower, flatCarry, shotsFor, clubsFor, shotAllowed, shotParams, shotDistance,
+    lieEffect, mishitRisk, swingSize, sweetSpot, simulateLine, powerToReach, carryTable, shotTable, fullCarry, speedFractionForPower, flatCarry, shotsFor, clubsFor, shotAllowed, shotParams, shotDistance,
     createBall, launch, step,
   };
 })();
