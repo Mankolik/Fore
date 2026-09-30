@@ -219,6 +219,7 @@ button {
   touch-action: manipulation;
 }
 #club-name small { display: block; font-weight: 500; font-size: 12px; color: var(--muted); }
+#club-name small.risky { color: #ffb4a0; }
 
 #swing-btn {
   width: 100%;

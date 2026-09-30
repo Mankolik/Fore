@@ -32,14 +32,45 @@
   const PUTTER = CLUBS.length - 1;
 
   // Shot types reshape a club's trajectory.  Chips and punches are metered by total distance (carry + roll).
+  // spread: random distance scatter (sd).  loss: distance lost per unit of mistimed strike.
+  // swing: [base, scale] -> how big the swing is at a given power, which sets the timing window.
   const SHOTS = {
-    full: { name: 'Full', desc: 'Full swing' },
-    three: { name: '¾', desc: 'Controlled ¾ swing', speed: 0.7, launch: 1.08, lift: 1, bite: 1.1 },
-    chip: { name: 'Chip', desc: 'Low bump & run', launch: 0.75, lift: 0.6, bite: 0.35, metric: 'total', surface: 'green' },
-    flop: { name: 'Flop', desc: 'High & soft', speed: 0.62, launchAbs: 54, lift: 1.1, bite: 1.5 },
-    punch: { name: 'Punch', desc: 'Low under trees', speed: 0.8, launch: 0.45, lift: 0.4, bite: 0.4, metric: 'total', surface: 'fairway' },
-    putt: { name: 'Putt', desc: 'Roll it', metric: 'total' },
+    full: { name: 'Full', desc: 'Full swing', spread: 0.02, loss: 0.1, swing: [0, 1] },
+    three: { name: '¾', desc: 'Controlled ¾ swing', speed: 0.7, launch: 1.08, lift: 1, bite: 1.1, spread: 0.05, loss: 0.2, swing: [0.45, 0.45] },
+    chip: { name: 'Chip', desc: 'Low bump & run — safest near the green', launch: 0.75, lift: 0.6, bite: 0.35, metric: 'total', surface: 'green', spread: 0.015, loss: 0.05, swing: [0.15, 0.5] },
+    flop: { name: 'Flop', desc: 'High & soft — big swing, risky off tight lies', speed: 0.62, launchAbs: 54, lift: 1.1, bite: 1.5, spread: 0.08, loss: 0.35, swing: [0.8, 0.2] },
+    punch: { name: 'Punch', desc: 'Low under trees', speed: 0.8, launch: 0.45, lift: 0.4, bite: 0.4, metric: 'total', surface: 'fairway', spread: 0.03, loss: 0.1, swing: [0, 0.9] },
+    putt: { name: 'Putt', desc: 'Roll it', metric: 'total', spread: 0.012, loss: 0, swing: [0, 1] },
   };
+  function swingSize(shot, power) {
+    const sw = (SHOTS[shot] || SHOTS.full).swing;
+    return sw[0] + sw[1] * power;
+  }
+
+  // Chance of a poor strike (fat / thin / topped) by club family and lie.  A well-timed swing cuts it.
+  const GROUP = { DR: 'driver', '3W': 'wood', '5W': 'wood', '3H': 'hybrid', '4H': 'hybrid', '5I': 'long', '6I': 'long', '7I': 'iron', '8I': 'iron', '9I': 'iron', PW: 'wedge', '52': 'wedge', '56': 'sand', '60': 'sand' };
+  const RISK_SAND = { driver: 0.92, wood: 0.75, hybrid: 0.4, long: 0.38, iron: 0.22, wedge: 0.12, sand: 0.03 };
+  const RISK_DEEP = { driver: 0.75, wood: 0.5, hybrid: 0.12, long: 0.32, iron: 0.18, wedge: 0.1, sand: 0.08 };
+  const RISK_ROUGH = { driver: 0.4, wood: 0.15, hybrid: 0.03, long: 0.1, iron: 0.05, wedge: 0.03, sand: 0.03 };
+  const TIGHT = (t) => t === T.FAIRWAY || t === T.FIRST || t === T.FRINGE || t === T.GREEN || t === T.TEE;
+  function mishitRisk(clubIdx, shot, lie) {
+    const c = CLUBS[clubIdx];
+    if (c.putter) return 0;
+    const g = GROUP[c.id];
+    let r = 0;
+    if (lie === T.SAND) r = RISK_SAND[g];
+    else if (lie === T.DEEP || lie === T.OOB) r = RISK_DEEP[g];
+    else if (lie === T.ROUGH) r = RISK_ROUGH[g];
+    else if (lie !== T.TEE && g === 'driver') r = 0.22; // driver off the deck
+    if (shot === 'flop') r += TIGHT(lie) ? 0.2 : lie === T.DEEP ? 0.12 : 0.05; // bladed off firm turf
+    if (shot === 'chip' && lie === T.SAND) r += 0.45; // no bounce to slide through the sand
+    if (shot === 'punch') r *= 0.6;
+    else if (shot === 'three') r *= 0.8;
+    return Math.min(0.97, r);
+  }
+  function gauss(rand) {
+    return Math.sqrt(-2 * Math.log(rand() + 1e-9)) * Math.cos(2 * Math.PI * rand());
+  }
   const SHOT_ORDER = ['full', 'three', 'chip', 'flop', 'punch', 'putt'];
   function shotAllowed(clubIdx, shot) {
     const c = CLUBS[clubIdx];
@@ -95,8 +126,11 @@
       case T.ROUGH: return c.rescue ? { speed: 0.94, spin: 0.7, error: 1.15, label: '-6%' } : { speed: 0.88, spin: 0.6, error: 1.3, label: '-12%' };
       case T.DEEP:
       case T.OOB: return c.rescue ? { speed: 0.82, spin: 0.5, error: 1.4, label: '-18%' } : { speed: 0.72, spin: 0.4, error: 1.7, label: '-28%' };
-      case T.SAND:
-        return c.sand ? { speed: 0.85, spin: 0.5, error: 1.3, label: '-15%' } : { speed: 0.62, spin: 0.4, error: 1.6, label: '-38%' };
+      case T.SAND: {
+        // Long, flat-faced clubs dig in or skull it; only the sand wedges are built for this.
+        const k = { driver: 0.45, wood: 0.55, hybrid: 0.68, long: 0.68, iron: 0.72, wedge: 0.76, sand: 0.85 }[GROUP[c.id]];
+        return { speed: k, spin: c.sand ? 0.5 : 0.4, error: c.sand ? 1.3 : 1.6, label: `-${Math.round((1 - k) * 100)}%` };
+      }
       case T.FIRST: return { speed: 0.96, spin: 0.85, error: 1.1, label: '-4%' };
       case T.TEE: return { speed: 1, spin: 1, error: 1, label: '' };
       default:
@@ -186,13 +220,65 @@
     return r;
   }
 
+  // Simulate a calm shot along the real line of play: it knows which grass the ball lands and rolls on and
+  // whether the line runs uphill or downhill (what a player sees), but not the side-slopes, so break is
+  // left for the player to read from the slope arrows.
+  function simulateLine(hole, x, y, aim, clubIdx, shot, lie, power) {
+    const p = shotParams(clubIdx, shot);
+    const le = lieEffect(lie, clubIdx);
+    const ca = Math.cos(aim), sa = Math.sin(aim);
+    const alongH = (t) => hole.height(x + ca * t, y + sa * t);
+    const tOf = (px, py) => (px - x) * ca + (py - y) * sa;
+    const flat = {
+      height: (px, py) => alongH(tOf(px, py)),
+      grad: (px, py) => {
+        const t = tOf(px, py), d = (alongH(t + 0.5) - alongH(t - 0.5)) / 1.0;
+        return { x: d * ca, y: d * sa };
+      },
+      treesNear: () => [], wind: { x: 0, y: 0, speed: 0 }, pin: { x: 1e9, y: 1e9 },
+      terrainAt: (px, py) => hole.terrainAt(px, py),
+    };
+    const a = ((p.launch + (lie === T.SAND ? 4 : 0)) * Math.PI) / 180;
+    const v = p.speed * speedFractionForPower(clubIdx, power, shot) * le.speed;
+    const b = createBall(x, y, flat);
+    b.vx = Math.cos(aim) * v * Math.cos(a);
+    b.vy = Math.sin(aim) * v * Math.cos(a);
+    b.vz = v * Math.sin(a);
+    b.spin = p.lift * (0.6 + 0.4 * le.spin);
+    b.bite = p.bite * le.spin;
+    b.z = alongH(0) + 0.001;
+    b.state = 'air';
+    b.lastDry = { x, y };
+    let land = null;
+    for (let i = 0; i < 2000 && b.state === 'air' || (b.state === 'roll' && i < 2000); i++) {
+      for (const e of step(b, flat, 1 / 30)) if (e.type === 'bounce' && !land) land = { x: e.x, y: e.y };
+    }
+    const along = (px, py) => (px - x) * Math.cos(aim) + (py - y) * Math.sin(aim);
+    land = land || { x: b.x, y: b.y };
+    return { carry: along(land.x, land.y), total: along(b.x, b.y), land, water: b.state === 'water' };
+  }
+  // Power needed for a bump-and-run to finish at `dist`, reading the grass along the line.
+  function powerToReach(hole, x, y, aim, clubIdx, shot, lie, dist) {
+    const full = simulateLine(hole, x, y, aim, clubIdx, shot, lie, 1);
+    if (full.total < dist) return { power: dist / Math.max(full.total, 1), ...full };
+    let lo = 0, hi = 1, r = full;
+    for (let k = 0; k < 13; k++) {
+      const m = (lo + hi) / 2;
+      r = simulateLine(hole, x, y, aim, clubIdx, shot, lie, m);
+      if (r.total < dist) lo = m;
+      else hi = m;
+    }
+    return { power: (lo + hi) / 2, ...r };
+  }
+
   // ---- Ball ------------------------------------------------------------------------------------
   function createBall(x, y, hole) {
     return { x, y, z: hole.height(x, y), vx: 0, vy: 0, vz: 0, spin: 0, side: 0, bite: 0, state: 'rest', t: 0, hitTrees: new Set(), bounces: 0 };
   }
 
   // power 0..1(+), accuracy error -1..1 (+ = slice to the right), aim angle in radians (screen space).
-  function launch(ball, hole, clubIdx, power, error, aim, putterRange, shot = 'full') {
+  // Returns { mishit } where mishit is null, 'fat', 'thin', 'top' or 'blade'.
+  function launch(ball, hole, clubIdx, power, error, aim, putterRange, shot = 'full', rand = Math.random) {
     const c = CLUBS[clubIdx];
     const lie = hole.terrainAt(ball.x, ball.y);
     const le = lieEffect(lie, clubIdx);
@@ -204,8 +290,8 @@
     ball.lastDry = { x: ball.x, y: ball.y };
     if (c.putter) {
       const surf = SURF[T.GREEN];
-      const dist = putterRange * clamp(power, 0, 1.1);
-      const speed = Math.sqrt(2 * surf.roll * G * dist);
+      const dist = putterRange * clamp(power, 0, 1.1) * (1 + gauss(rand) * SHOTS.putt.spread);
+      const speed = Math.sqrt(2 * surf.roll * G * Math.max(0, dist));
       const dir = aim + error * le.error * 0.035;
       ball.vx = Math.cos(dir) * speed;
       ball.vy = Math.sin(dir) * speed;
@@ -213,22 +299,44 @@
       ball.spin = 0;
       ball.side = 0;
       ball.state = 'roll';
-      return;
+      return { mishit: null };
     }
     const e = error * le.error;
     const p = shotParams(clubIdx, shot);
-    const speed = p.speed * speedFractionForPower(clubIdx, power, shot) * le.speed;
-    const launchA = ((p.launch + (lie === T.SAND ? 4 : 0)) * Math.PI) / 180;
+    const sh = SHOTS[shot] || SHOTS.full;
+    let speed = p.speed * speedFractionForPower(clubIdx, power, shot) * le.speed;
+    speed *= (1 - sh.loss * Math.min(1, Math.abs(error))) * (1 + gauss(rand) * sh.spread);
+    let launchDeg = p.launch + (lie === T.SAND ? 4 : 0);
+    let spin = p.lift * (0.6 + 0.4 * le.spin);
+    // Lofted shots rely on spin to stop, and spin varies strike to strike (and dies out of the rough).
+    let bite = p.bite * le.spin;
+    if (shot === 'flop' || shot === 'three') bite *= (0.6 + 0.8 * rand()) * (lie === T.ROUGH || lie === T.DEEP ? 0.6 : 1);
+    // Poor strike?  Timing matters: a perfect swing keeps only a third of the risk.
+    let mishit = null;
+    const risk = mishitRisk(clubIdx, shot, lie) * (0.35 + 0.65 * Math.min(1, Math.abs(error) * 2.5));
+    if (rand() < risk) {
+      const g = GROUP[c.id];
+      if (lie === T.SAND) mishit = rand() < 0.7 ? 'fat' : 'thin';
+      else if (shot === 'flop') mishit = 'blade';
+      else if (g === 'driver' || g === 'wood') mishit = rand() < 0.6 ? 'top' : 'fat';
+      else mishit = rand() < 0.5 ? 'fat' : 'thin';
+      if (mishit === 'fat') speed *= (lie === T.SAND ? 0.15 : 0.3) + rand() * 0.3;
+      else if (mishit === 'thin') { launchDeg *= 0.35; spin *= 0.25; bite *= 0.2; speed *= 0.9 + rand() * 0.1; }
+      else if (mishit === 'blade') { launchDeg = 12; spin *= 0.3; bite *= 0.2; speed *= 1.25; }
+      else if (mishit === 'top') { launchDeg = 2 + rand() * 3; spin *= 0.1; bite = 0; speed *= 0.45 + rand() * 0.25; }
+    }
+    const launchA = (launchDeg * Math.PI) / 180;
     const dir = aim + e * 0.03;
     const vh = speed * Math.cos(launchA);
     ball.vx = Math.cos(dir) * vh;
     ball.vy = Math.sin(dir) * vh;
     ball.vz = speed * Math.sin(launchA);
-    ball.spin = p.lift * (0.6 + 0.4 * le.spin);
+    ball.spin = spin;
     ball.side = e * 0.05;
-    ball.bite = p.bite * le.spin;
+    ball.bite = bite;
     ball.z = hole.height(ball.x, ball.y) + 0.02;
     ball.state = 'air';
+    return { mishit };
   }
 
   // Advance the simulation by `dt` seconds. Returns an array of events.
@@ -444,7 +552,7 @@
 
   Golf.physics = {
     G, CUP_R, CLUBS, PUTTER, SURF, SHOTS, SHOT_ORDER,
-    lieEffect, carryTable, shotTable, fullCarry, speedFractionForPower, flatCarry, shotsFor, clubsFor, shotAllowed, shotParams, shotDistance,
+    lieEffect, mishitRisk, swingSize, simulateLine, powerToReach, carryTable, shotTable, fullCarry, speedFractionForPower, flatCarry, shotsFor, clubsFor, shotAllowed, shotParams, shotDistance,
     createBall, launch, step,
   };
 })();

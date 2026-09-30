@@ -33,7 +33,7 @@
   const game = {
     course: null, holeIdx: 0, hole: null, layers: null, minimap: null,
     ball: null, strokes: 0, scores: [], phase: 'menu', inRound: false,
-    aim: 0, clubIdx: 0, shot: 'full', metric: 'carry', carryRatio: 1, returnSpeed: 1.4, putterRange: 10,
+    aim: 0, pinAim: 0, pinAimT: 0, clubIdx: 0, shot: 'full', metric: 'carry', carryRatio: 1, returnSpeed: 1.4, putterRange: 10,
     power: 0, marker: 0, lockedPower: 0, topHold: 0, error: 0,
     clubAngle: 0, strikeT: 0, followT: 0, carryShown: false,
     cam: { x: 0, y: 0, scale: 3 }, flightScale: 3, userZoom: 1, overview: false,
@@ -167,22 +167,49 @@
     if ((lie === T.FRINGE || lie === T.FIRST || lie === T.FAIRWAY) && dist < 12 && Math.abs(game.hole.height(b.x, b.y) - game.hole.height(pin.x, pin.y)) < 1.2) {
       if (sampleLine(b, pin, (t) => t === T.GREEN || t === T.FRINGE || t === T.FIRST || t === T.FAIRWAY)) return { club: P.PUTTER, shot: 'putt' };
     }
-    const clearRun = !HAZARD(lie) && sampleLine(b, pin, ROLLABLE);
-    const overTrouble = lie === T.SAND || !sampleLine(b, pin, (t) => !HAZARD(t));
-    const longest = longestClub();
-    let best = null;
-    for (let i = longest; i < P.PUTTER; i++) {
-      for (const shot of P.shotsFor(i)) {
-        if (shot === 'punch') continue; // a deliberate choice, never suggested
-        if (shot === 'chip' && !(clearRun && dist <= 45)) continue;
-        if (shot === 'flop' && !(overTrouble && dist <= 34)) continue;
-        if (shot === 'three' && dist > 110) continue;
-        const m = fullDist(i, shot, lie).metric;
-        if (m >= dist * 0.98 && (!best || m < best.m)) best = { club: i, shot, m };
-      }
+    // Near the green, chip whenever a club can land it on the putting surface and let it release.
+    if (dist <= 45 && lie !== T.SAND && lie !== T.DEEP) {
+      const club = chipPlan(dist);
+      if (club != null) return { club, shot: 'chip' };
     }
-    if (best) return best;
-    return { club: longest, shot: 'full' };
+    // Flop over trouble from grass; from sand the ¾ splash with a sand wedge is the percentage play.
+    const overTrouble = lie !== T.SAND && !sampleLine(b, pin, (t) => !HAZARD(t));
+    const longest = longestClub();
+    // Tightest option that reaches the flag, steering clear of clubs likely to be mishit from this lie.
+    for (const maxRisk of [0.3, 1]) {
+      let best = null;
+      for (let i = longest; i < P.PUTTER; i++) {
+        for (const shot of P.shotsFor(i)) {
+          if (shot === 'punch' || shot === 'chip') continue; // punch is a deliberate choice; chips handled above
+          if (shot === 'flop' && !(overTrouble && dist <= 34)) continue;
+          if (shot === 'three' && dist > 110) continue;
+          if (P.mishitRisk(i, shot, lie) > maxRisk) continue;
+          const m = fullDist(i, shot, lie).metric;
+          if (m >= dist * 0.98 && (!best || m < best.m)) best = { club: i, shot, m };
+        }
+      }
+      if (best) return best;
+    }
+    // Nothing reaches: take the club that goes furthest on average once mishits are priced in.
+    let lay = null;
+    for (let i = longest; i < P.PUTTER; i++) {
+      const ev = fullDist(i, 'full', lie).carry * (1 - P.mishitRisk(i, 'full', lie));
+      if (!lay || ev > lay.ev) lay = { club: i, shot: 'full', ev };
+    }
+    return lay || { club: longest, shot: 'full' };
+  }
+  // The most lofted club that lands the chip on the green and still rolls out to the hole.
+  function chipPlan(dist) {
+    const b = game.ball, pin = game.hole.pin;
+    const aim = Math.atan2(pin.y - b.y, pin.x - b.x);
+    const clubs = P.clubsFor('chip').slice().reverse();
+    for (const i of clubs) {
+      const r = P.powerToReach(game.hole, b.x, b.y, aim, i, 'chip', game.lie, dist);
+      if (r.power > 1 || game.hole.terrainAt(r.land.x, r.land.y) !== T.GREEN) continue;
+      if (!sampleLine(r.land, pin, ROLLABLE)) continue;
+      return i;
+    }
+    return null;
   }
   // Driver only off the tee; from deep rough, trees or sand the woods are a poor choice too.
   function longestClub() {
@@ -193,6 +220,10 @@
   // Best club for a chosen shot type: the tightest one that still reaches the flag.
   function bestClubFor(shot) {
     const dist = distToPin();
+    if (shot === 'chip') {
+      const plan = chipPlan(dist);
+      if (plan != null) return plan;
+    }
     const list = P.clubsFor(shot);
     const pool = list.filter((i) => i >= longestClub() || P.CLUBS[i].putter);
     const cands = pool.length ? pool : list;
@@ -232,8 +263,10 @@
       game.lieFull = fd.metric;
       game.carryRatio = fd.carry / Math.max(fd.total, 1);
       game.metric = P.shotParams(idx, game.shot).metric;
-      // Bisection for the power that reaches the pin.
-      if (dist >= game.lieFull) game.pinPower = dist / game.lieFull;
+      // Bisection for the power that reaches the pin.  Chips and punches read the grass and the
+      // up/downhill along the aim line, so their pin mark follows your aim.
+      if (game.metric === 'total') updateRunPinPower();
+      else if (dist >= game.lieFull) game.pinPower = dist / game.lieFull;
       else {
         let lo = 0, hi = 1;
         for (let k = 0; k < 16; k++) {
@@ -244,10 +277,20 @@
         game.pinPower = (lo + hi) / 2;
       }
       els.clubTitle.textContent = c.name;
-      els.clubDist.textContent = `${Math.round(game.lieFull)} m ${game.metric}${game.lieFx.label ? ' (' + game.lieFx.label + ')' : ''}`;
-      game.showSlopes = false;
+      const risk = P.mishitRisk(idx, game.shot, game.lie);
+      const distLabel = `${Math.round(game.lieFull)} m ${game.metric}${game.lieFx.label ? ' (' + game.lieFx.label + ')' : ''}`;
+      els.clubDist.textContent = risk >= 0.05 ? `⚠ ${Math.round(risk * 100)}% mishit · ${Math.round(game.lieFull)} m` : distLabel;
+      els.clubDist.classList.toggle('risky', risk >= 0.25);
+      game.showSlopes = game.shot === 'chip';
     }
     updateGuide();
+  }
+  function updateRunPinPower() {
+    const b = game.ball;
+    const r = P.powerToReach(game.hole, b.x, b.y, game.aim, game.clubIdx, game.shot, game.lie, distToPin());
+    game.pinPower = r.power;
+    game.pinAim = game.aim;
+    game.pinAimT = performance.now();
   }
 
   // Club arrows step through the clubs that can play the selected shot type, so the shot never resets.
@@ -318,6 +361,13 @@
     }
   }
 
+  const MISHIT_TEXT = {
+    fat: 'Chunked it — heavy contact!',
+    thin: 'Thinned it — caught it low on the face!',
+    top: 'Topped it!',
+    blade: 'Bladed the flop — no spin!',
+  };
+
   // ---------------------------------------------------------------------------------------------
   // Swing
   function pressSwing() {
@@ -341,7 +391,9 @@
   function lockPower() {
     game.lockedPower = Math.max(game.power, 0.02);
     game.marker = game.lockedPower;
-    game.returnSpeed = Math.max(0.12, game.lockedPower / RETURN_TIME(game.lockedPower));
+    // Timing depends on how big the swing is, not how far the ball goes: a flop is a big, fast swing.
+    const sw = P.CLUBS[game.clubIdx].putter ? game.lockedPower : P.swingSize(game.shot, game.lockedPower);
+    game.returnSpeed = Math.max(0.12, sw / RETURN_TIME(sw));
     game.phase = 'downswing';
     setHint('Tap at the white line!');
   }
@@ -363,7 +415,11 @@
     const c = P.CLUBS[game.clubIdx];
     game.shotStart = { x: b.x, y: b.y };
     const lie = game.lie;
-    P.launch(b, game.hole, game.clubIdx, game.lockedPower, game.error, game.aim, game.putterRange, game.shot);
+    const res = P.launch(b, game.hole, game.clubIdx, game.lockedPower, game.error, game.aim, game.putterRange, game.shot);
+    if (res && res.mishit) {
+      setHint(MISHIT_TEXT[res.mishit], 2800);
+      if (navigator.vibrate) try { navigator.vibrate([30, 40, 30]); } catch (e) { /* ignore */ }
+    }
     game.strokes++;
     game.phase = 'flight';
     game.followT = 0;
@@ -396,6 +452,9 @@
   }
 
   function update(dt) {
+    // Keep the run-out pin mark in step with the aim (throttled: it runs a few quick simulations).
+    if (game.phase === 'aim' && game.metric === 'total' && !P.CLUBS[game.clubIdx].putter &&
+        Math.abs(game.aim - game.pinAim) > 0.004 && performance.now() - game.pinAimT > 120) updateRunPinPower();
     if (game.aimHold && game.phase === 'aim' && (game.aimHoldT += dt) > 0) {
       const putt = P.CLUBS[game.clubIdx].putter;
       const rate = (putt ? 0.012 : 0.02) * (1 + Math.min(game.aimHoldT, 2) * (putt ? 4 : 8));
@@ -1102,4 +1161,5 @@
   });
 
   Golf.game = game;
+  Golf.debug = { setupShot, setShot }; // used by the browser playtests
 })();

@@ -5,6 +5,8 @@ const Golf = globalThis.Golf;
 const { T, physics: P } = Golf;
 
 let failures = 0;
+// A random source whose Gaussian draw is exactly zero and that never triggers a mishit on clean lies.
+const NO_NOISE = () => 0.25;
 function check(cond, msg) {
   if (!cond) {
     failures++;
@@ -45,7 +47,7 @@ for (let i = 0; i < P.PUTTER; i++) {
   check(carry < prev - 5, `${P.CLUBS[i].name} carries less than the previous club (${carry.toFixed(0)})`);
   prev = carry;
   const b = P.createBall(2000, 3900, flat);
-  P.launch(b, flat, i, 0.5, 0, -Math.PI / 2);
+  P.launch(b, flat, i, 0.5, 0, -Math.PI / 2, 20, 'full', NO_NOISE);
   let landed = null;
   while (b.state === 'air' || b.state === 'roll') {
     for (const e of P.step(b, flat, 1 / 60)) if (e.type === 'bounce' && landed == null) landed = 3900 - e.y;
@@ -73,7 +75,7 @@ check(P.clubsFor('flop').every((i) => P.CLUBS[i].flop), 'flop only with high-lof
 // Sidespin: a positive error curves the ball right of the target line.
 {
   const b = P.createBall(2000, 3900, flat);
-  P.launch(b, flat, 3, 1, 1, -Math.PI / 2);
+  P.launch(b, flat, 3, 1, 1, -Math.PI / 2, 20, 'full', NO_NOISE);
   while (b.state !== 'rest') P.step(b, flat, 1 / 60);
   check(b.x - 2000 > 10, 'slice curves right');
 }
@@ -82,7 +84,7 @@ check(P.clubsFor('flop').every((i) => P.CLUBS[i].flop), 'flop only with high-lof
   const run = (wy) => {
     const h = { ...flat, wind: { x: 0, y: wy, speed: Math.abs(wy) } };
     const b = P.createBall(2000, 3900, h);
-    P.launch(b, h, 4, 1, 0, -Math.PI / 2);
+    P.launch(b, h, 4, 1, 0, -Math.PI / 2, 20, 'full', NO_NOISE);
     let land = null;
     while (b.state !== 'rest') for (const e of P.step(b, h, 1 / 60)) if (e.type === 'bounce' && land == null) land = 3900 - e.y;
     return land;
@@ -95,18 +97,18 @@ check(P.clubsFor('flop').every((i) => P.CLUBS[i].flop), 'flop only with high-lof
 const green = { ...flat, terrainAt: () => T.GREEN };
 for (const d of [1, 3, 8, 15]) {
   const b = P.createBall(2000, 3900, green);
-  P.launch(b, green, P.PUTTER, d / 20, 0, -Math.PI / 2, 20);
+  P.launch(b, green, P.PUTTER, d / 20, 0, -Math.PI / 2, 20, 'putt', NO_NOISE);
   while (b.state === 'roll') P.step(b, green, 1 / 60);
   check(Math.abs(3900 - b.y - d) < 0.05, `putt of ${d} m rolls ${(3900 - b.y).toFixed(2)} m`);
 }
 {
   const g = { ...green, pin: { x: 2000, y: 3895 } };
   const b = P.createBall(2000, 3900, g);
-  P.launch(b, g, P.PUTTER, 5.4 / 20, 0, -Math.PI / 2, 20);
+  P.launch(b, g, P.PUTTER, 5.4 / 20, 0, -Math.PI / 2, 20, 'putt', NO_NOISE);
   while (b.state === 'roll') P.step(b, g, 1 / 60);
   check(b.state === 'holed', 'a firm straight putt drops');
   const b2 = P.createBall(2000, 3900, g);
-  P.launch(b2, g, P.PUTTER, 1, 0, -Math.PI / 2, 20);
+  P.launch(b2, g, P.PUTTER, 1, 0, -Math.PI / 2, 20, 'putt', NO_NOISE);
   while (b2.state === 'roll') P.step(b2, g, 1 / 60);
   check(b2.state !== 'holed', 'a putt that is far too fast does not drop');
 }

@@ -35,6 +35,13 @@ wheel to zoom, `V` for overview, `C` for the scorecard, `M` to mute.
   surface, and backspin bites, so wedges check up or spin back on greens. Balls plug in sand.
 - **Rolling:** rolling resistance per surface plus gravity along the slope (5/7 g for a
   rolling sphere). Putts break, and slow balls get grabbed by longer grass.
+- **Strike quality:** every club has a mishit risk that depends on the lie (driver/woods from sand or deep rough
+  are nearly hopeless, hybrids handle rough, 56°/60° wedges handle sand). A well-timed swing cuts the risk. Mishits
+  come out fat, thin, topped or bladed. Each shot type also has its own distance spread: chips are the tightest,
+  flops the loosest. The timing window depends on swing size, so a flop is as demanding as a full swing.
+- **Reading the shot:** the chip/punch pin marker accounts for the grass and the up/downhill along your line (not
+  the side-slope break, which you read from the arrows). `node tests/shortgame.js` runs a balance harness that plays
+  thousands of greenside shots with human-like timing noise.
 - **Hazards:** trees (canopies knock the ball down, trunks deflect it), water (penalty drop
   where the ball last crossed the margin), bunkers, rough lies that cost distance and spin,
   out of bounds (stroke and distance), and lip-outs at the cup.
