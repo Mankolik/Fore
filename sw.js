@@ -1,7 +1,7 @@
 // Offline support: cache the whole game on first visit, then serve it from the device.
 // Strategy: stale-while-revalidate — instant (and offline) loads from the cache, with a background
 // refresh whenever the network is available, so updates arrive on the next launch.
-const VERSION = 'golfy-v1';
+const VERSION = 'golfy-v2';
 const ASSETS = [
   './',
   'index.html',
