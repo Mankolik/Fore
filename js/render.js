@@ -371,6 +371,109 @@
     return { canvas: c, scale: s };
   }
 
+  // ---- Golfer animation -----------------------------------------------------------------------------
+  const ease = (t) => t * t * (3 - 2 * t);
+  const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  // Club direction keyframes (relative to the hands, local frame + height) through a full swing:
+  // u = 0 address/impact, 1 = top of backswing, -1 = finish.
+  const CLUB_KEYS = [
+    [-1, [-0.25, 0.75, -0.3]], // finish: wrapped behind the shoulders
+    [-0.65, [-0.05, -0.2, 0.95]], // club pointing up through the follow-through
+    [-0.3, [0.3, -0.9, -0.2]], // extension toward the target
+    [0, [0.401, -0.02, -0.75]], // address: hands (0.4, -0.03, 0.75) down to the ball at (0.8, -0.05, 0)
+    [0.25, [0.2, 0.9, -0.1]], // takeaway: parallel to the ground
+    [0.6, [0.02, 0.35, 0.9]], // wrists hinged, club up
+    [1, [-0.15, -0.9, 0.2]], // top: across the shoulders toward the target
+  ];
+  function clubDir(u) {
+    for (let i = 1; i < CLUB_KEYS.length; i++) {
+      if (u <= CLUB_KEYS[i][0]) {
+        const [u0, v0] = CLUB_KEYS[i - 1], [u1, v1] = CLUB_KEYS[i];
+        return lerp3(v0, v1, ease((u - u0) / (u1 - u0)));
+      }
+    }
+    return CLUB_KEYS[CLUB_KEYS.length - 1][1];
+  }
+  function golferPose(game, putting, club, time) {
+    const top = putting ? 1.1 : 3.7;
+    let u = clamp(game.clubAngle / top, -1, 1);
+    const b = game.ball, G = game.golfer;
+    const celebrate = b && b.state === 'holed';
+    const pose = { breath: 1, heel: 0 };
+    // Projected club length: at address the head sits exactly on the ball (0.85 from the hands).
+    const len = club.id === 'DR' ? 0.9 : club.id && club.id.endsWith('W') ? 0.88 : 0.85;
+    if (celebrate) {
+      const bounce = Math.abs(Math.sin(time * 7)) * 0.06;
+      pose.shoulder = 0;
+      pose.hip = 0;
+      pose.hands = [0.12, -0.08, 2.15 + bounce];
+      pose.head = [0.1, -0.15, 3.0 + bounce];
+      pose.look = G.aim + Math.PI / 2;
+      return pose;
+    }
+    if (putting) {
+      // Pendulum: shoulders rock, arms and putter move as one piece, no wrist hinge.
+      const a = u * 0.34;
+      pose.shoulder = u * 0.2;
+      pose.hip = 0;
+      const rot = (x, y) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+      const [hx, hy] = rot(0.36, -0.02);
+      const [cx, cy] = rot(0.78, 0);
+      pose.hands = [hx, hy, 0.72];
+      pose.head = [cx, cy, 0.02];
+    } else {
+      const e = u >= 0 ? ease(u) : -ease(-u);
+      pose.shoulder = u >= 0 ? 1.5 * e : 1.7 * e;
+      pose.hip = pose.shoulder * 0.5;
+      pose.heel = u < 0 ? -e : 0;
+      // Hands orbit the chest and rise.
+      const a = (u >= 0 ? 1.75 : 1.95) * e - 0.075;
+      const r = 0.4 - 0.05 * Math.abs(e);
+      const hz = 0.75 + 0.9 * Math.pow(Math.abs(u), 1.2);
+      pose.hands = [Math.cos(a) * r, Math.sin(a) * r, hz];
+      // Club relative to the hands, turned with the body (the keyframes are body-relative).
+      let d = clubDir(u);
+      const ta = pose.shoulder * (u >= 0 ? 0.35 : 0.25);
+      d = [d[0] * Math.cos(ta) - d[1] * Math.sin(ta), d[0] * Math.sin(ta) + d[1] * Math.cos(ta), d[2]];
+      // Address waggle while lining up.
+      if (game.phase === 'aim') {
+        const w = Math.max(0, Math.sin(time * 1.8)) ** 8 * 0.1;
+        d = [d[0], d[1] + w, d[2] + w * 0.5];
+        pose.breath = 1 + Math.sin(time * 1.6) * 0.02;
+      }
+      const n = Math.hypot(d[0], d[1], d[2]) || 1;
+      pose.head = [pose.hands[0] + (d[0] / n) * len, pose.hands[1] + (d[1] / n) * len, Math.max(0.02, pose.hands[2] + (d[2] / n) * len)];
+    }
+    // Eyes on the ball until it's gone, then follow it.
+    const bx = b ? b.x : G.x, by = b ? b.y : G.y;
+    const watching = b && (game.phase === 'flight' || game.phase === 'settle') && Math.hypot(bx - G.x, by - G.y) > 1;
+    pose.look = watching ? Math.atan2(by - G.y, bx - G.x) : G.aim + Math.PI / 2;
+    return pose;
+  }
+  function drawClubHead(ctx, p, club, gs, ang) {
+    ctx.save();
+    ctx.translate(p[0], p[1]);
+    ctx.rotate(ang);
+    if (club.putter) {
+      ctx.fillStyle = '#9aa3ab';
+      ctx.fillRect(-0.03 * gs, -0.08 * gs, 0.06 * gs, 0.16 * gs);
+    } else if (club.id === 'DR' || (club.id && club.id.endsWith('W'))) {
+      ctx.fillStyle = '#1d232b';
+      ctx.beginPath();
+      ctx.ellipse(0.02 * gs, 0, 0.08 * gs, 0.065 * gs, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#c8cdd2';
+      ctx.lineWidth = 0.012 * gs;
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#c3c9cf';
+      ctx.beginPath();
+      ctx.ellipse(0.01 * gs, 0, 0.04 * gs, 0.075 * gs, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   // ---- Frame drawing -----------------------------------------------------------------------------
   class Renderer {
     constructor(canvas) {
@@ -427,8 +530,8 @@
       this.drawTrail(game);
       this.drawCup(game, time);
       this.drawParticles(game, false);
+      if (game.showGolfer) this.drawGolfer(game, time);
       this.drawBall(game);
-      if (game.showGolfer) this.drawGolfer(game);
       this.drawParticles(game, true);
       this.drawFlag(game, time);
     }
@@ -613,66 +716,121 @@
       }
     }
 
-    drawGolfer(game) {
+    // Golfer: a small pseudo-3D skeleton.  Each joint has a height (z) that is drawn lifted up the screen
+    // like the ball, so the swing has depth.  Local frame: +x faces the ball, +y points away from the
+    // target (the target is toward -y) for a right-handed player.
+    drawGolfer(game, time) {
       const { ctx } = this;
       const cam = game.cam;
-      const b = game.ball;
+      const G = game.golfer;
+      if (!G) return;
       const gs = Math.max(1, 28 / cam.scale); // keep the golfer readable when zoomed out
-      const dx = Math.cos(game.aim), dy = Math.sin(game.aim);
-      const fx = -dy, fy = dx; // facing: toward the ball (golfer stands on the left of the line)
-      const cx = b.x - fx * 0.8 * gs - dx * 0.05 * gs, cy = b.y - fy * 0.8 * gs - dy * 0.05 * gs;
-      const phi = game.clubAngle;
+      const A = G.aim + Math.PI / 2; // facing direction (toward the ball line)
+      const dx = Math.cos(G.aim), dy = Math.sin(G.aim);
+      const fx = Math.cos(A), fy = Math.sin(A);
+      const ox = G.x - fx * 0.8 * gs - dx * 0.05 * gs, oy = G.y - fy * 0.8 * gs - dy * 0.05 * gs;
+      const ca = Math.cos(A), sa = Math.sin(A), zk = ZK * 0.62;
+      const P = (lx, ly, z = 0) => [ox + (lx * ca - ly * sa) * gs, oy + (lx * sa + ly * ca) * gs - z * zk * gs];
+      const club = Golf.physics.CLUBS[game.clubIdx] || {};
+      const putting = !!club.putter;
+      const pose = golferPose(game, putting, club, time);
+
       ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(Math.atan2(fy, fx));
-      ctx.scale(gs, gs);
-      // Feet.
-      ctx.fillStyle = '#3a2c22';
-      ctx.beginPath();
-      ctx.ellipse(0.05, -0.22, 0.14, 0.06, 0, 0, Math.PI * 2);
-      ctx.ellipse(0.05, 0.22, 0.14, 0.06, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // Body rotates with the swing.
-      const turn = clamp(phi, -2.2, 2.2) * 0.35;
-      ctx.save();
-      ctx.rotate(turn);
-      ctx.fillStyle = game.shirtColor;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 0.17, 0.3, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      // Club: pivots around the hands.
-      const hx = 0.36, hy = 0;
-      const len = 0.44 + 0.4 * Math.sin(Math.min(Math.abs(phi), Math.PI) / 2);
-      const ca = phi;
-      const ex = hx + Math.cos(ca) * len, ey = hy + Math.sin(ca) * len;
-      ctx.strokeStyle = '#d9d9d9';
-      ctx.lineWidth = 0.05;
       ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      // Shadow.
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
       ctx.beginPath();
-      ctx.moveTo(hx, hy);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-      ctx.fillStyle = '#555';
-      ctx.beginPath();
-      ctx.arc(ex, ey, 0.06, 0, Math.PI * 2);
+      const sh = P(0.12, 0.05);
+      ctx.ellipse(sh[0] + 0.25 * gs, sh[1] + 0.2 * gs, 0.42 * gs, 0.3 * gs, A, 0, Math.PI * 2);
       ctx.fill();
-      // Arms.
-      ctx.strokeStyle = '#e7b98f';
-      ctx.lineWidth = 0.07;
+
+      const line = (a, b, w, color) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = w * gs;
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.stroke();
+      };
+      const dot = (p, r, color) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], r * gs, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      const rot = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+
+      // Feet (the trail heel lifts and turns through the finish).
+      const shoe = '#2b2522';
+      for (const side of [-1, 1]) {
+        const lift = side > 0 ? pose.heel : 0;
+        const [fx2, fy2] = rot(0.07, 0.24 * side, side > 0 ? -lift * 0.6 : 0);
+        const p = P(fx2, fy2, lift * 0.08);
+        ctx.fillStyle = shoe;
+        ctx.beginPath();
+        ctx.ellipse(p[0], p[1], 0.14 * gs, 0.06 * gs, A + (side > 0 ? -lift * 0.9 : 0), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Legs and hips.
+      const pants = '#3b4252';
+      for (const side of [-1, 1]) {
+        const [hx, hy] = rot(0, 0.11 * side, pose.hip);
+        line(P(0.07, 0.24 * side, 0.1), P(hx + 0.03, hy, 0.9), 0.13, pants);
+      }
+      {
+        const c = P(0, 0, 0.95);
+        ctx.fillStyle = pants;
+        ctx.beginPath();
+        ctx.ellipse(c[0], c[1], 0.13 * gs, 0.19 * gs, A + pose.hip, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Torso: shoulders capsule turning on top of the hips.
+      const shirt = game.shirtColor;
+      const [lsx, lsy] = rot(0.02, -0.21, pose.shoulder);
+      const [tsx, tsy] = rot(0.02, 0.21, pose.shoulder);
+      const leadSh = [lsx, lsy, 1.42], trailSh = [tsx, tsy, 1.42];
+      line(P(0, 0, 1.0), P(0.02, 0, 1.35), 0.3 * pose.breath, shirt);
+      line(P(...leadSh), P(...trailSh), 0.24 * pose.breath, shirt);
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+      ctx.lineWidth = 0.02 * gs;
       ctx.beginPath();
-      ctx.moveTo(0.02, -0.18);
-      ctx.lineTo(hx, hy);
-      ctx.lineTo(0.02, 0.18);
+      const ls = P(...leadSh), ts = P(...trailSh);
+      ctx.moveTo(ls[0], ls[1]);
+      ctx.lineTo(ts[0], ts[1]);
       ctx.stroke();
-      // Head & cap.
-      ctx.fillStyle = '#e7b98f';
+
+      // Arms: shoulder -> elbow -> hands (elbows bow outward a little).
+      const H = pose.hands, C = pose.head;
+      const elbow = (sh, out) => {
+        const mx = (sh[0] + H[0]) / 2, my = (sh[1] + H[1]) / 2, mz = (sh[2] + H[2]) / 2;
+        return [mx + out[0], my + out[1], mz - 0.05];
+      };
+      const skin = '#e7b98f';
+      const trailEl = elbow(trailSh, rot(0.03, 0.05, pose.shoulder));
+      line(P(...trailSh), P(...trailEl), 0.085, shirt);
+      line(P(...trailEl), P(...H), 0.07, skin);
+      // Club: grip at the hands, shaft to the head.
+      const shaftEnd = P(...C);
+      const grip = P(...H);
+      line(grip, shaftEnd, 0.035, '#cfd3d6');
+      line(grip, P(H[0] + (C[0] - H[0]) * 0.22, H[1] + (C[1] - H[1]) * 0.22, H[2] + (C[2] - H[2]) * 0.22), 0.05, '#1e1e1e');
+      drawClubHead(ctx, shaftEnd, club, gs, Math.atan2(shaftEnd[1] - grip[1], shaftEnd[0] - grip[0]));
+      const leadEl = elbow(leadSh, rot(0.03, -0.05, pose.shoulder));
+      line(P(...leadSh), P(...leadEl), 0.085, shirt);
+      line(P(...leadEl), P(...H), 0.07, skin);
+      dot(grip, 0.055, '#f4f4f4'); // glove
+
+      // Head and cap (the brim points where the golfer is looking).
+      const head = P(0.04, 0, 1.68);
+      dot(head, 0.11, skin);
+      const look = pose.look;
+      ctx.fillStyle = '#1f2833';
       ctx.beginPath();
-      ctx.arc(0.02, 0, 0.12, 0, Math.PI * 2);
+      ctx.arc(head[0], head[1], 0.1 * gs, look + Math.PI * 0.5, look + Math.PI * 1.5);
       ctx.fill();
-      ctx.fillStyle = '#20252b';
       ctx.beginPath();
-      ctx.arc(0, 0, 0.1, Math.PI * 0.5, Math.PI * 1.5);
+      ctx.ellipse(head[0] + Math.cos(look) * 0.09 * gs, head[1] + Math.sin(look) * 0.09 * gs, 0.075 * gs, 0.05 * gs, look, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -683,7 +841,7 @@
         if (!!p.above !== above) continue;
         const a = clamp(p.life / p.max, 0, 1);
         if (p.kind === 'ring') {
-          ctx.strokeStyle = `rgba(230,245,255,${a * 0.8})`;
+          ctx.strokeStyle = (p.color || 'rgba(230,245,255,A)').replace('A', (a * 0.8).toFixed(2));
           ctx.lineWidth = this.px(game.cam, 2);
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.r * (1 - a) + 0.2, 0, Math.PI * 2);

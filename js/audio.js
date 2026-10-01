@@ -10,8 +10,17 @@
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       ctx = new AC();
+      if (Golf.music) Golf.music.attach(ctx);
     }
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended' && !document.hidden) ctx.resume();
+  }
+  // Pause all audio while the app is in the background (and resume when it comes back).
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (!ctx) return;
+      if (document.hidden) ctx.suspend();
+      else ctx.resume();
+    });
   }
 
   function noiseBuffer(dur) {

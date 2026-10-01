@@ -16,7 +16,7 @@
     continueWrap: $('continue-wrap'), continueBtn: $('btn-continue'), continueInfo: $('continue-info'),
     loading: $('loading'), scorecard: $('scorecard'), scTitle: $('sc-title'), scCourse: $('sc-course'),
     scResult: $('sc-result'), scTable: $('sc-table'), scButtons: $('sc-buttons'),
-    btnMenu: $('btn-menu'), btnCard: $('btn-card'), btnSound: $('btn-sound'),
+    btnMenu: $('btn-menu'), btnCard: $('btn-card'), btnSound: $('btn-sound'), btnMusic: $('btn-music'),
     hudTop: $('hud-top'),
   };
 
@@ -93,6 +93,7 @@
       const hole = game.course.getHole(i);
       // Each biome has its own physics (gravity, air, surfaces); distance tables depend on it.
       P.setEnvironment(hole.biome.env, hole.biome.id);
+      if (Golf.music) Golf.music.play(hole.biome.id);
       R.displayHeight.k = hole.biome.env.gravity ?? 1;
       distCache.clear();
       game.hole = hole;
@@ -142,6 +143,8 @@
     game.clubAngle = 0;
     game.followT = 0;
     game.showGolfer = true;
+    // The golfer addresses the ball here and stays put to watch the shot.
+    game.golfer = { x: b.x, y: b.y, aim: game.aim };
     game.carryShown = false;
     updateClub();
     updateHud();
@@ -478,10 +481,11 @@
     if (c.putter) audio.play('putt');
     else {
       audio.play('hit', game.lockedPower);
-      if (lie === T.SAND) {
+      // Debris matches what the ball was sitting on (sand, snow, ash, moss, grass...).
+      if (lie === T.SAND || isLoose(lie)) {
         audio.play('sand');
-        spray(b.x, b.y, 'rgba(226,206,150,A)', 22, 4, 5);
-      } else if (lie !== T.TEE && lie !== T.GREEN) spray(b.x, b.y, 'rgba(70,130,50,A)', 8, 3, 3);
+        spray(b.x, b.y, surfaceColor(lie), lie === T.SAND ? 22 : 16, 4, 5);
+      } else if (lie !== T.TEE && lie !== T.GREEN && lie !== T.FRINGE && lie !== T.WATER) spray(b.x, b.y, surfaceColor(lie), 8, 3, 3);
       if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) { /* ignore */ }
     }
     updateGuide();
@@ -505,6 +509,14 @@
     // Keep the run-out pin mark in step with the aim (throttled: it runs a few quick simulations).
     if (game.phase === 'aim' && game.metric === 'total' && !P.CLUBS[game.clubIdx].putter &&
         Math.abs(game.aim - game.pinAim) > 0.004 && performance.now() - game.pinAimT > 120) updateRunPinPower();
+    // The golfer shuffles round to the new aim rather than snapping.
+    if (game.golfer && game.phase === 'aim') {
+      const G = game.golfer, b = game.ball;
+      G.x = b.x; G.y = b.y;
+      let da = game.aim - G.aim;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      G.aim += da * Math.min(1, dt * 12);
+    } else if (game.golfer && ['backswing', 'downswing', 'strike'].includes(game.phase)) game.golfer.aim = game.aim;
     if (game.aimHold && game.phase === 'aim' && (game.aimHoldT += dt) > 0) {
       const putt = P.CLUBS[game.clubIdx].putter;
       const rate = (putt ? 0.012 : 0.02) * (1 + Math.min(game.aimHoldT, 2) * (putt ? 4 : 8));
@@ -535,8 +547,12 @@
         break;
       case 'flight': {
         game.followT += dt;
-        game.clubAngle = -Math.min(1, game.followT / 0.35) * (isPutt ? 0.9 : 3.2) * Math.max(0.4, game.lockedPower);
-        if (game.followT > 1.6) game.showGolfer = false;
+        {
+          // Ease into a balanced finish (a full finish on big swings, a short one on chips and putts).
+          const f = Math.min(1, game.followT / (isPutt ? 0.45 : 0.55));
+          const eased = 1 - (1 - f) * (1 - f) * (1 - f);
+          game.clubAngle = -eased * top * (isPutt ? Math.max(0.35, game.lockedPower) : Math.max(0.45, game.lockedPower));
+        }
         // Full shots roll out at double speed; putts always play in real time.
         const steps = game.fastForward ? 4 : game.ball.state === 'roll' && !isPutt ? 2 : 1;
         for (let s = 0; s < steps && game.phase === 'flight'; s++) {
@@ -579,14 +595,14 @@
             game.carry = Math.hypot(ev.x - game.shotStart.x, ev.y - game.shotStart.y);
             setHint(`Carry ${Math.round(game.carry)} m`);
           }
-          if (ev.terrain === T.SAND) {
+          if (ev.terrain === T.SAND || isLoose(ev.terrain)) {
             audio.play('sand');
-            spray(ev.x, ev.y, 'rgba(226,206,150,A)', 14, 2.5, 3);
+            spray(ev.x, ev.y, surfaceColor(ev.terrain), 14, 2.5, 3);
           } else audio.play('bounce', ev.strength);
           break;
         case 'tree':
           audio.play('tree');
-          spray(ev.x, ev.y, 'rgba(60,125,45,A)', 14, 3, 1, ev.z - game.hole.height(ev.x, ev.y), true);
+          spray(ev.x, ev.y, LEAF_COLOR[game.hole.biome.id] || LEAF_COLOR.parkland, 14, 3, 1, ev.z - game.hole.height(ev.x, ev.y), true);
           setHint('Clipped a tree!');
           break;
         case 'trunk':
@@ -594,9 +610,12 @@
           break;
         case 'water':
           audio.play('splash');
-          game.particles.push({ kind: 'ring', x: ev.x, y: ev.y, r: 2.2, life: 1.2, max: 1.2 });
-          game.particles.push({ kind: 'ring', x: ev.x, y: ev.y, r: 3.5, life: 1.6, max: 1.6 });
-          spray(ev.x, ev.y, 'rgba(210,235,255,A)', 16, 2, 4);
+          {
+            const splash = SPLASH_COLOR[game.hole.biome.liquid.style] || SPLASH_COLOR.water;
+            game.particles.push({ kind: 'ring', x: ev.x, y: ev.y, r: 2.2, life: 1.2, max: 1.2, color: splash });
+            game.particles.push({ kind: 'ring', x: ev.x, y: ev.y, r: 3.5, life: 1.6, max: 1.6, color: splash });
+            spray(ev.x, ev.y, splash, 16, 2, 4);
+          }
           break;
         case 'lip':
           audio.play('lip');
@@ -713,6 +732,21 @@
 
   // ---------------------------------------------------------------------------------------------
   // Particles
+  // Particle colours come from the world's own palette, slightly lightened so puffs read on the ground.
+  function surfaceColor(t) {
+    const c = (game.hole && game.hole.biome.colors[t]) || [120, 150, 90];
+    const k = 1.12;
+    return `rgba(${Math.min(255, c[0] * k) | 0},${Math.min(255, c[1] * k) | 0},${Math.min(255, c[2] * k) | 0},A)`;
+  }
+  // Loose surfaces that kick up a puff: snow, waste-area sand, ash.
+  const LOOSE = { winter: [T.ROUGH, T.DEEP, T.OOB], desert: [T.ROUGH, T.DEEP, T.OOB], volcanic: [T.ROUGH, T.DEEP] };
+  const isLoose = (t) => !!game.hole && (LOOSE[game.hole.biome.id] || []).includes(t);
+  const LEAF_COLOR = {
+    parkland: 'rgba(60,125,45,A)', desert: 'rgba(96,150,72,A)', alien: 'rgba(150,255,240,A)',
+    links: 'rgba(84,112,48,A)', winter: 'rgba(245,250,255,A)', volcanic: 'rgba(120,108,100,A)',
+  };
+  const SPLASH_COLOR = { water: 'rgba(210,235,255,A)', acid: 'rgba(190,255,110,A)', lava: 'rgba(255,160,50,A)', ice: 'rgba(240,250,255,A)' };
+
   function spray(x, y, color, n, speed, up, z0 = 0, above = false) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, s = Math.random() * speed;
@@ -1142,6 +1176,27 @@
     syncSound();
   });
   syncSound();
+  // Music: tap toggles, long-press skips to the next track.
+  const syncMusic = () => els.btnMusic.classList.toggle('off', !Golf.music.enabled);
+  let musicHold = null, musicSkipped = false;
+  els.btnMusic.addEventListener('pointerdown', () => {
+    audio.unlock();
+    musicSkipped = false;
+    musicHold = setTimeout(() => { musicSkipped = true; Golf.music.next(); }, 550);
+  });
+  const musicUp = () => clearTimeout(musicHold);
+  els.btnMusic.addEventListener('pointerup', musicUp);
+  els.btnMusic.addEventListener('pointerleave', musicUp);
+  els.btnMusic.addEventListener('click', () => {
+    if (musicSkipped) return;
+    const on = Golf.music.toggle();
+    syncMusic();
+    setHint(on ? `♫ Music on${Golf.music.current ? ' — ' + Golf.music.current : ''}` : 'Music off');
+  });
+  syncMusic();
+  Golf.music.onTrack = (name) => {
+    if (Golf.music.enabled && !els.hint.textContent) setHint(`♫ ${name}`, 2500);
+  };
 
   window.addEventListener('keydown', (e) => {
     if (e.target === els.seed) return;
@@ -1162,6 +1217,8 @@
       e.preventDefault();
     } else if (e.code === 'KeyS') {
       cycleShot();
+    } else if (e.code === 'KeyN') {
+      Golf.music.next();
     } else if (e.code === 'KeyM') {
       audio.toggle();
       syncSound();

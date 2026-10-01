@@ -40,7 +40,8 @@
     <div id="side-buttons">
       <button class="icon-btn" id="btn-menu" aria-label="Menu">☰</button>
       <button class="icon-btn" id="btn-card" aria-label="Scorecard">▦</button>
-      <button class="icon-btn" id="btn-sound" aria-label="Toggle sound">♪</button>
+      <button class="icon-btn" id="btn-sound" aria-label="Toggle sound effects">🔊</button>
+      <button class="icon-btn" id="btn-music" aria-label="Toggle music (long-press for next track)">♫</button>
     </div>
 
     <div id="toast"></div>
@@ -93,7 +94,8 @@
             <li><b>Worlds:</b> each seed is set in a world — parkland, desert, alien (low gravity!), coastal links, winter (slippery frozen ponds) or volcanic (lava). The preview above shows which; tap 🎲 for another.</li>
             <li>Wind, slopes, lie, trees, bunkers and water all matter. Arrows on the green show the slope when putting.</li>
             <li>Hold the button during a shot to fast-forward.</li>
-            <li>Desktop: mouse to aim, click/space to swing, ←/→ fine aim, ↑/↓ clubs, S next shot type.</li>
+            <li><b>Music:</b> every world has its own soundtrack. ♫ toggles it (long-press for the next track); 🔊 toggles sound effects.</li>
+            <li>Desktop: mouse to aim, click/space to swing, ←/→ fine aim, ↑/↓ clubs, S next shot type, N next music track.</li>
           </ul>
         </details>
       </div>
@@ -116,6 +118,7 @@
   <script src="js/physics.js"></script>
   <script src="js/render.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/music.js"></script>
   <script src="js/game.js"></script>
 </body>
 </html>

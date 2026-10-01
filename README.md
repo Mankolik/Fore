@@ -39,6 +39,11 @@ Every seed plays in one of six environments (the menu preview shows which; roll 
 | ❄️ Winter | Snow, snowy pines, bare birches | Snow grabs the ball; frozen ponds are playable and slippery |
 | 🌋 Volcanic | Ash, black sand, dead trees, basalt | Lava lakes, craters, big elevation changes |
 
+Each world also has its own soundtrack of three procedurally synthesized tracks (Web Audio, no audio files):
+parkland acoustic plucks and swing, desert oud and frame drums, alien synth arpeggios, Celtic jigs on the links,
+music-box bells in winter and taiko-driven tracks on the volcano. ♫ toggles music (long-press or `N` for the next
+track); 🔊 toggles sound effects.
+
 Biomes live in `js/biomes.js` (palette, trees, terrain shaping, physics environment, names). A seed's biome
 comes from its own hash, so parkland seeds keep the same layouts they always had.
 
@@ -87,6 +92,7 @@ layer around the green.
 | `js/physics.js` | Clubs, ball flight, bounces, rolling, trees, cup |
 | `js/render.js` | Terrain rasteriser and per-frame drawing |
 | `js/audio.js` | Synthesised sound effects (WebAudio) |
+| `js/music.js` | Procedural music sequencer, instruments and the 18 world tracks |
 | `js/game.js` | State machine, swing meter, input, camera, HUD, save/resume |
 
 Run the headless checks with `node tests/run.js`.
