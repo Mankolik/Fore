@@ -1270,10 +1270,43 @@
   buildShotRow();
   resize();
   showMenu();
+  setupOffline();
   requestAnimationFrame((t) => {
     lastT = t;
     requestAnimationFrame(frame);
   });
+
+  // ---------------------------------------------------------------------------------------------
+  // Offline / install: a service worker caches the game; Android offers an install prompt, iPhone users
+  // get the Add to Home Screen hint.
+  function setupOffline() {
+    const status = $('offline-status'), btn = $('btn-install'), ios = $('install-ios');
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches || navigator.standalone;
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then(() => {
+        status.textContent = standalone ? '✓ Installed · plays offline' : '✓ Ready to play offline';
+      }).catch(() => { status.textContent = ''; });
+    }
+    let deferred = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferred = e;
+      btn.classList.remove('hidden');
+    });
+    btn.addEventListener('click', async () => {
+      if (!deferred) return;
+      deferred.prompt();
+      await deferred.userChoice.catch(() => null);
+      deferred = null;
+      btn.classList.add('hidden');
+    });
+    window.addEventListener('appinstalled', () => {
+      btn.classList.add('hidden');
+      status.textContent = '✓ Installed · plays offline';
+    });
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIOS && !standalone) ios.classList.remove('hidden');
+  }
 
   Golf.game = game;
   Golf.debug = { setupShot, setShot }; // used by the browser playtests

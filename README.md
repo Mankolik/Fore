@@ -4,6 +4,17 @@ A mobile-first golf mini game for the browser: real ball physics, a classic
 three-click swing meter and endless procedurally generated 9-hole courses.
 No build step and no dependencies, so it runs straight from GitHub Pages.
 
+## Play offline / install as an app
+
+Golfy is an installable web app (PWA): after the first visit everything is cached on the device, so it
+plays with no connection and launches full-screen from the home screen.
+
+- **iPhone / iPad (Safari):** open the site, tap **Share → Add to Home Screen**.
+- **Android (Chrome):** tap **📲 Install app** in the menu (or ⋮ → **Install app**).
+
+Updates download in the background when you're online and apply on the next launch. Bump `VERSION` in
+`sw.js` when adding or removing files (the test suite checks the cache list matches what the page loads).
+
 ## Play
 
 Live at **https://mankolik.github.io/Golfy/**. GitHub Pages serves the `gh-pages` branch,

@@ -179,6 +179,17 @@ for (const d of [1, 3, 8, 15]) {
   check(worst < 30, `shots settle in reasonable time (worst ${worst.toFixed(1)} s)`);
 }
 
+// --- Offline: every file the page loads is in the service worker's cache list ------------------------
+{
+  const fs = require('fs');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  const refs = [...html.matchAll(/(?:src|href)="([^"#:]+)"/g)].map((m) => m[1]);
+  for (const r of refs) check(sw.includes(`'${r}'`), `offline cache includes ${r}`);
+  for (const m of sw.matchAll(/'((?:js|css|icons)\/[^']+|[a-z.]+\.(?:html|svg|webmanifest))'/g))
+    check(fs.existsSync(path.join(__dirname, '..', m[1])), `cached file exists: ${m[1]}`);
+}
+
 if (failures) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);
