@@ -33,6 +33,7 @@ static web server.
   again as the marker crosses the white line. Early = push/slice right, late = pull/hook left.
 - The red **pin** mark on the meter is the power that carries the flag in calm air on flat ground.
 - Pinch to zoom. Tap the minimap to see the whole hole. Hold the button during a shot to fast-forward.
+- ☰ opens the quick menu: scorecard, sound effects, music, next track, main menu. Tap a message to dismiss it.
 
 **Desktop:** mouse to aim, click or Space to swing, ←/→ for fine aim, ↑/↓ for clubs, `S` for the next shot type,
 wheel to zoom, `V` for overview, `C` for the scorecard, `M` to mute.

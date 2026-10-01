@@ -20,34 +20,39 @@
   <div id="app">
     <canvas id="game"></canvas>
 
-    <div id="hud-top">
-      <div class="panel" id="hole-panel">
-        <div class="big" id="hole-title">Hole 1</div>
-        <div class="small" id="hole-sub">Par 4 · 350 m</div>
+    <div id="hud">
+      <div id="hud-top">
+        <div class="panel" id="hole-panel">
+          <div class="big" id="hole-title">Hole 1</div>
+          <div class="small" id="hole-sub">Par 4 · 350 m</div>
+        </div>
+        <div class="panel" id="score-panel">
+          <div class="big" id="stroke-label">Shot 1</div>
+          <div class="small" id="score-label">E</div>
+        </div>
+        <div class="panel" id="wind-panel">
+          <canvas id="wind-canvas"></canvas>
+          <div class="small" id="wind-label">0 m/s</div>
+        </div>
       </div>
-      <div class="panel" id="score-panel">
-        <div class="big" id="stroke-label">Shot 1</div>
-        <div class="small" id="score-label">E</div>
-      </div>
-      <div class="panel" id="wind-panel">
-        <canvas id="wind-canvas"></canvas>
-        <div class="small" id="wind-label">0 m/s</div>
-      </div>
+  <div id="info-strip"><span id="lie-label">Tee box</span><span class="dot">·</span><span id="dist-label">0 m to pin</span></div>
     </div>
-
-    <div id="info-strip"><span id="lie-label">Tee box</span><span class="dot">·</span><span id="dist-label">0 m to pin</span></div>
 
     <canvas id="minimap" title="Tap to toggle overview"></canvas>
 
     <div id="side-buttons">
-      <button class="icon-btn" id="btn-menu" aria-label="Menu">☰</button>
-      <button class="icon-btn" id="btn-card" aria-label="Scorecard">▦</button>
-      <button class="icon-btn" id="btn-sound" aria-label="Toggle sound effects">🔊</button>
-      <button class="icon-btn" id="btn-music" aria-label="Toggle music (long-press for next track)">♫</button>
+      <button class="icon-btn" id="btn-quick" aria-label="Menu" aria-expanded="false">☰</button>
+    </div>
+    <div id="quick-menu" class="hidden" role="menu">
+      <button role="menuitem" id="btn-card">▦ Scorecard</button>
+      <button role="menuitem" id="btn-sound">🔊 Sound effects</button>
+      <button role="menuitem" id="btn-music">♫ Music</button>
+      <button role="menuitem" id="btn-next-track">⏭ Next track</button>
+      <button role="menuitem" id="btn-menu">⌂ Main menu</button>
     </div>
 
     <div id="toast"></div>
-    <div id="hint"></div>
+    <div id="notify" aria-live="polite"></div>
 
     <div id="controls">
       <div id="shot-row" role="radiogroup" aria-label="Shot type"></div>
@@ -101,7 +106,7 @@
             <li><b>Worlds:</b> each seed is set in a world — parkland, desert, alien (low gravity!), coastal links, winter (slippery frozen ponds) or volcanic (lava). The preview above shows which; tap 🎲 for another.</li>
             <li>Wind, slopes, lie, trees, bunkers and water all matter. Arrows on the green show the slope when putting.</li>
             <li>Hold the button during a shot to fast-forward.</li>
-            <li><b>Music:</b> every world has its own soundtrack. ♫ toggles it (long-press for the next track); 🔊 toggles sound effects.</li>
+            <li><b>Menu (☰):</b> scorecard, sound effects, music on/off, next track and the main menu. Tap the minimap for an overview of the hole.</li>
             <li>Desktop: mouse to aim, click/space to swing, ←/→ fine aim, ↑/↓ clubs, S next shot type, N next music track.</li>
           </ul>
         </details>

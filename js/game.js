@@ -9,7 +9,7 @@
     canvas: $('game'), minimap: $('minimap'), wind: $('wind-canvas'),
     holeTitle: $('hole-title'), holeSub: $('hole-sub'), stroke: $('stroke-label'), score: $('score-label'),
     windLabel: $('wind-label'), lie: $('lie-label'), dist: $('dist-label'), info: $('info-strip'),
-    toast: $('toast'), hint: $('hint'), controls: $('controls'), swing: $('swing-btn'),
+    toast: $('toast'), controls: $('controls'), swing: $('swing-btn'),
     clubTitle: $('club-title'), clubDist: $('club-dist'), clubPrev: $('club-prev'), clubNext: $('club-next'),
     aimLeft: $('aim-left'), aimRight: $('aim-right'),
     menu: $('menu'), seed: $('seed-input'), dice: $('btn-dice'), preview: $('course-preview'), play: $('btn-play'),
@@ -17,7 +17,8 @@
     loading: $('loading'), scorecard: $('scorecard'), scTitle: $('sc-title'), scCourse: $('sc-course'),
     scResult: $('sc-result'), scTable: $('sc-table'), scButtons: $('sc-buttons'),
     btnMenu: $('btn-menu'), btnCard: $('btn-card'), btnSound: $('btn-sound'), btnMusic: $('btn-music'),
-    hudTop: $('hud-top'),
+    btnQuick: $('btn-quick'), quickMenu: $('quick-menu'), btnNextTrack: $('btn-next-track'),
+    hudTop: $('hud-top'), hud: $('hud'), notify: $('notify'), sideButtons: $('side-buttons'),
   };
 
   const BACKSWING_TIME = 1.05; // seconds from address to full power
@@ -49,19 +50,35 @@
     const vw = window.innerWidth, vh = window.innerHeight;
     game.dpr = Math.min(window.devicePixelRatio || 1, 2);
     game.renderer.resize(vw, vh, game.dpr);
-    const infoRect = els.info.getBoundingClientRect();
-    const hudRect = els.hudTop.getBoundingClientRect();
-    game.topReserve = Math.max(infoRect.bottom, hudRect.bottom) + 6;
-    game.bottomReserve = els.controls.getBoundingClientRect().top - 50;
+    const hudBottom = els.hud.getBoundingClientRect().bottom;
+    game.topReserve = hudBottom + 6;
+    // Leave room for the meter (and its pin marker) above the controls.
+    game.bottomReserve = els.controls.getBoundingClientRect().top - 58;
     game.renderer.viewCenterY = (game.topReserve + game.bottomReserve) / 2;
-    els.hint.style.top = game.topReserve + 4 + 'px'; // hints sit up top so they never cover the ball
+    // Side buttons, minimap and notifications all start just below the HUD, so nothing overlaps it.
+    const top = hudBottom + 8;
+    els.sideButtons.style.top = top + 'px';
+    els.quickMenu.style.top = top + 'px';
+    els.quickMenu.style.left = els.sideButtons.getBoundingClientRect().right + 8 + 'px';
+    els.minimap.style.top = els.sideButtons.getBoundingClientRect().bottom + 8 + 'px';
+    els.notify.style.top = top + 'px';
     if (game.hole && game.layers) buildMinimap();
+    layoutNotify();
+  }
+  // Notifications fill the gap between the side buttons and the minimap.
+  function layoutNotify() {
+    const vw = window.innerWidth;
+    // Left column holds the menu button and minimap; messages use the rest of the width.
+    const left = Math.max(els.sideButtons.getBoundingClientRect().right, els.minimap.getBoundingClientRect().right) + 8;
+    els.notify.style.left = left + 'px';
+    els.notify.style.right = Math.max(8, vw - left - 520) + 'px';
   }
   function buildMinimap() {
     const vw = window.innerWidth;
     const maxW = clamp(vw * 0.2, 60, 120);
     const maxH = clamp((game.bottomReserve - game.topReserve) * 0.42, 100, 260);
     game.minimap = R.buildMinimap(game.hole, game.layers.main, maxW, maxH);
+    requestAnimationFrame(layoutNotify); // minimap size changes per hole
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
@@ -99,6 +116,7 @@
       game.hole = hole;
       game.layers = R.buildHoleLayers(hole);
       buildMinimap();
+      for (const k of ['result', 'strike', 'event', 'lie', 'swing']) dismiss(k, true);
       game.ball = P.createBall(hole.tee.x, hole.tee.y, hole);
       game.strokes = 0;
       game.trail = [];
@@ -115,7 +133,7 @@
       if (i === 0 || !game.seenBiomeIntro) {
         game.seenBiomeIntro = true;
         toast(`${bio.icon} ${bio.name}`, `Hole ${i + 1} · Par ${hole.par} · ${Math.round(hole.length)} m`, 2600);
-        if (BIOME_TIPS[bio.id]) setTimeout(() => setHint(BIOME_TIPS[bio.id], 4500), 900);
+        if (BIOME_TIPS[bio.id]) setTimeout(() => notify(BIOME_TIPS[bio.id], { key: 'tip', level: 'info', ms: 6000, pri: 1 }), 2700);
       } else toast(`Hole ${i + 1}`, `Par ${hole.par} · ${Math.round(hole.length)} m`, 1800);
       const idle = window.requestIdleCallback || ((f) => setTimeout(f, 60));
       idle(() => {
@@ -132,7 +150,7 @@
     b.z = hole.height(b.x, b.y);
     game.lie = hole.terrainAt(b.x, b.y);
     game.lieCond = rollLieCondition(game.lie);
-    if (game.lieCond) setHint(`${game.lieCond.label} — ${game.lieCond.note}`, 3200);
+    if (game.lieCond) notify(`${game.lieCond.label}: ${LIE_SHORT[game.lieCond.id]}`, { key: 'lie', level: 'warn', ms: 6000, pri: 2 });
     const dist = distToPin();
     game.aim = Math.atan2(hole.pin.y - b.y, hole.pin.x - b.x);
     const pick = pickShot(dist);
@@ -164,6 +182,13 @@
     const text = (game.hole.biome.lies && game.hole.biome.lies[id]) || LIE_TEXT[id];
     return { id, ...LIE_EFFECT[id], label: text[0], note: text[1] };
   }
+  const LIE_SHORT = {
+    flyer: '+6% distance, little spin',
+    down: '−10%, harder to strike',
+    buried: '−12%, easy to mishit',
+    divot: '−7%, harder to strike',
+    plugged: '−30%, no spin',
+  };
   const LIE_EFFECT = {
     flyer: { speed: 1.06, spin: 0.5, risk: 0 },
     down: { speed: 0.9, spin: 0.8, risk: 0.08 },
@@ -187,11 +212,11 @@
   // Lie-adjusted distance for a club/shot: carry, or total (carry + roll) for chips and punches.
   const distCache = new Map();
   const BIOME_TIPS = {
-    desert: 'Hot, thin air carries further · baked fairways run · waste areas are firm sand',
-    alien: 'Low gravity: the ball flies ~40% further · craters everywhere · avoid the acid',
-    links: 'Firm, fast links: expect wind and lots of run',
-    winter: 'Snow grabs the ball · frozen ponds are playable — and slippery!',
-    volcanic: 'Lava lakes swallow balls · black sand bunkers',
+    desert: 'Thin air: the ball flies further and runs on baked fairways',
+    alien: 'Low gravity: ~40% more carry. Avoid the acid!',
+    links: 'Firm, windy links: expect lots of run',
+    winter: 'Snow stops the ball dead; frozen ponds are slippery',
+    volcanic: 'Lava swallows balls; bunkers are black sand',
   };
   const terrainName = (t) => (game.hole && game.hole.biome.names[t]) || Golf.TERRAIN_NAMES[t];
   function metricAt(clubIdx, shot, lie, power) {
@@ -359,7 +384,7 @@
     game.shot = shot;
     if (!P.shotAllowed(game.clubIdx, shot)) game.clubIdx = bestClubFor(shot);
     updateClub();
-    setHint(`${P.SHOTS[shot].name}: ${P.SHOTS[shot].desc}`);
+    notify(`${P.SHOTS[shot].name}: ${P.SHOTS[shot].desc}`, { key: 'shot', ms: 2200, pri: 0 });
     audio.play('tick');
   }
   function cycleShot() {
@@ -428,7 +453,8 @@
       game.phase = 'backswing';
       game.power = 0;
       game.topHold = 0;
-      setHint('Release to set power');
+      dismiss('result');
+      notify('Release to set power', { key: 'swing', ms: 1600, pri: 0 });
     } else if (game.phase === 'downswing') {
       strike(game.marker);
     } else if (game.phase === 'flight') {
@@ -447,7 +473,7 @@
     game.returnSpeed = Math.max(0.12, sw / RETURN_TIME(sw));
     game.sweet = P.CLUBS[game.clubIdx].putter ? 0.02 : P.sweetSpot(sw, game.shot); // putting keeps its original feel
     game.phase = 'downswing';
-    setHint('Tap at the white line!');
+    notify('Tap at the white line!', { key: 'swing', ms: 1600, pri: 0 });
   }
   function strike(m) {
     let e = 0;
@@ -459,9 +485,11 @@
     game.strikeT = 0;
     game.strikeFrom = game.clubAngle;
     const isPutt = P.CLUBS[game.clubIdx].putter;
-    if (e === 0) setHint(isPutt ? 'Pure stroke' : 'Perfect strike!');
-    else if (Math.abs(e) < 0.35) setHint(e > 0 ? 'Slight push/fade' : 'Slight pull/draw');
-    else setHint(e > 0 ? (isPutt ? 'Pushed it right' : 'Slice!') : isPutt ? 'Pulled it left' : 'Hook!');
+    dismiss('swing');
+    const sk = { key: 'strike', pri: 2 };
+    if (e === 0) notify(isPutt ? 'Pure stroke' : 'Perfect strike!', { ...sk, level: 'good', ms: 2200 });
+    else if (Math.abs(e) < 0.35) notify(e > 0 ? 'Slight push / fade' : 'Slight pull / draw', { ...sk, level: 'info', ms: 2800 });
+    else notify(e > 0 ? (isPutt ? 'Pushed it right' : 'Slice! Mistimed early') : isPutt ? 'Pulled it left' : 'Hook! Mistimed late', { ...sk, level: 'warn', ms: 4000 });
   }
   function launchShot() {
     const b = game.ball;
@@ -469,8 +497,9 @@
     game.shotStart = { x: b.x, y: b.y };
     const lie = game.lie;
     const res = P.launch(b, game.hole, game.clubIdx, game.lockedPower, game.error, game.aim, game.putterRange, game.shot, Math.random, game.lieCond);
+    dismiss('lie');
     if (res && res.mishit) {
-      setHint(MISHIT_TEXT[res.mishit], 2800);
+      notify(MISHIT_TEXT[res.mishit], { key: 'strike', level: 'bad', ms: 5500, pri: 3 });
       if (navigator.vibrate) try { navigator.vibrate([30, 40, 30]); } catch (e) { /* ignore */ }
     }
     game.strokes++;
@@ -593,7 +622,7 @@
           if (!game.carryShown && P.CLUBS[game.clubIdx] && !P.CLUBS[game.clubIdx].putter) {
             game.carryShown = true;
             game.carry = Math.hypot(ev.x - game.shotStart.x, ev.y - game.shotStart.y);
-            setHint(`Carry ${Math.round(game.carry)} m`);
+            notify(`Carry ${Math.round(game.carry)} m`, { key: 'result', level: 'result', ms: 0, pri: 2 });
           }
           if (ev.terrain === T.SAND || isLoose(ev.terrain)) {
             audio.play('sand');
@@ -603,7 +632,7 @@
         case 'tree':
           audio.play('tree');
           spray(ev.x, ev.y, LEAF_COLOR[game.hole.biome.id] || LEAF_COLOR.parkland, 14, 3, 1, ev.z - game.hole.height(ev.x, ev.y), true);
-          setHint('Clipped a tree!');
+          notify('Clipped a tree!', { key: 'event', level: 'warn', ms: 3500, pri: 2 });
           break;
         case 'trunk':
           audio.play('trunk');
@@ -619,7 +648,7 @@
           break;
         case 'lip':
           audio.play('lip');
-          setHint('Lipped out!');
+          notify('Lipped out!', { key: 'event', level: 'warn', ms: 3500, pri: 2 });
           break;
         case 'holed':
           audio.play('cup');
@@ -655,7 +684,9 @@
     if (b.state === 'rest') {
       const t = hole.terrainAt(b.x, b.y);
       const total = Math.hypot(b.x - game.shotStart.x, b.y - game.shotStart.y);
-      if (!P.CLUBS[game.clubIdx].putter && game.carryShown) setHint(`Carry ${Math.round(game.carry)} m · Total ${Math.round(total)} m`);
+      // The shot result stays up until the next swing starts.
+      if (!P.CLUBS[game.clubIdx].putter && game.carryShown)
+        notify(`Carry ${Math.round(game.carry)} m · Total ${Math.round(total)} m · ${terrainName(t)}`, { key: 'result', level: 'result', ms: 0, pri: 2 });
       game.phase = 'settle';
       if (t === T.OOB) {
         game.strokes++;
@@ -877,12 +908,43 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => els.toast.classList.remove('show'), ms);
   }
-  let hintTimer = null;
-  function setHint(text, ms = 2200) {
-    els.hint.textContent = text;
-    clearTimeout(hintTimer);
-    hintTimer = setTimeout(() => (els.hint.textContent = ''), ms);
+  // Notifications: up to three stacked messages.  Each has a key (a new message with the same key updates
+  // it in place), a level for its colour, a lifetime (0 = stays until dismissed) and a priority so
+  // background chatter (music, tips) never pushes out something important like a mishit.
+  const notes = new Map();
+  const NOTE_ICON = { good: '✓ ', warn: '⚠ ', bad: '⚠ ', info: '', result: '', music: '' };
+  function notify(text, { key = text, level = 'info', ms = 2600, pri = 1 } = {}) {
+    let n = notes.get(key);
+    if (!n) {
+      if (notes.size >= 3) {
+        // Make room by dropping the least important (oldest first); give up if everything outranks us.
+        let victim = null;
+        for (const [k, v] of notes) if (!victim || v.pri < victim.pri) victim = { k, pri: v.pri };
+        if (victim.pri > pri) return;
+        dismiss(victim.k, true);
+      }
+      const el = document.createElement('div');
+      el.addEventListener('click', () => dismiss(key));
+      els.notify.append(el);
+      n = { el };
+      notes.set(key, n);
+    }
+    n.pri = pri;
+    n.el.className = 'note ' + level;
+    n.el.textContent = (NOTE_ICON[level] || '') + text;
+    clearTimeout(n.timer);
+    if (ms > 0) n.timer = setTimeout(() => dismiss(key), ms);
   }
+  function dismiss(key, now = false) {
+    const n = notes.get(key);
+    if (!n) return;
+    notes.delete(key);
+    clearTimeout(n.timer);
+    if (now) return n.el.remove();
+    n.el.classList.add('out');
+    setTimeout(() => n.el.remove(), 300);
+  }
+  const setHint = (text, ms = 2600) => (text ? notify(text, { ms }) : null);
 
   // Swing meter, drawn on the main canvas above the controls.
   function drawMeter() {
@@ -1165,37 +1227,58 @@
   els.clubNext.addEventListener('click', () => changeClub(1));
   els.minimap.addEventListener('click', () => {
     game.overview = !game.overview;
-    setHint(game.overview ? 'Overview — tap the map to return' : '');
+    if (game.overview) notify('Overview — tap the map to return', { key: 'view', ms: 3000, pri: 1 });
+    else dismiss('view');
   });
-  els.btnMenu.addEventListener('click', showMenu);
-  els.btnCard.addEventListener('click', () => showScorecard(false));
-  const syncSound = () => els.btnSound.classList.toggle('off', audio.muted);
+  // Quick menu (☰): everything that used to be a column of buttons.
+  const setQuick = (open) => {
+    els.quickMenu.classList.toggle('hidden', !open);
+    els.btnQuick.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) syncQuick();
+  };
+  els.btnQuick.addEventListener('click', (e) => {
+    e.stopPropagation();
+    audio.unlock();
+    setQuick(els.quickMenu.classList.contains('hidden'));
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!els.quickMenu.contains(e.target) && e.target !== els.btnQuick) setQuick(false);
+  });
+  els.btnMenu.addEventListener('click', () => { setQuick(false); showMenu(); });
+  els.btnCard.addEventListener('click', () => { setQuick(false); showScorecard(false); });
+  els.btnNextTrack.addEventListener('click', () => { audio.unlock(); Golf.music.next(); setQuick(false); });
+  const stateLabel = (el, text, on) => {
+    el.innerHTML = '';
+    el.append(text);
+    const st = document.createElement('span');
+    st.className = 'state';
+    st.textContent = on ? 'On' : 'Off';
+    el.append(st);
+    el.classList.toggle('off', !on);
+  };
+  const syncSound = () => stateLabel(els.btnSound, '🔊 Sound effects', !audio.muted);
   els.btnSound.addEventListener('click', () => {
     audio.unlock();
     audio.toggle();
     syncSound();
   });
   syncSound();
-  // Music: tap toggles, long-press skips to the next track.
-  const syncMusic = () => els.btnMusic.classList.toggle('off', !Golf.music.enabled);
-  let musicHold = null, musicSkipped = false;
-  els.btnMusic.addEventListener('pointerdown', () => {
-    audio.unlock();
-    musicSkipped = false;
-    musicHold = setTimeout(() => { musicSkipped = true; Golf.music.next(); }, 550);
-  });
-  const musicUp = () => clearTimeout(musicHold);
-  els.btnMusic.addEventListener('pointerup', musicUp);
-  els.btnMusic.addEventListener('pointerleave', musicUp);
+  const syncMusic = () => stateLabel(els.btnMusic, '♫ Music', Golf.music.enabled);
+  function syncQuick() { syncSound(); syncMusic(); }
   els.btnMusic.addEventListener('click', () => {
-    if (musicSkipped) return;
+    audio.unlock();
     const on = Golf.music.toggle();
     syncMusic();
-    setHint(on ? `♫ Music on${Golf.music.current ? ' — ' + Golf.music.current : ''}` : 'Music off');
+    notify(on ? `♫ Music on${Golf.music.current ? ' — ' + Golf.music.current : ''}` : 'Music off', { key: 'music', level: 'music', ms: 2500, pri: 1 });
   });
   syncMusic();
   Golf.music.onTrack = (name) => {
-    if (Golf.music.enabled && !els.hint.textContent) setHint(`♫ ${name}`, 2500);
+    // Don't talk over the hole banner: wait until it has gone.
+    const show = () => {
+      if (els.toast.classList.contains('show')) return setTimeout(show, 1500);
+      if (Golf.music.enabled) notify(`♫ ${name}`, { key: 'music', level: 'music', ms: 3000, pri: 0 });
+    };
+    setTimeout(show, 250); // the hole banner appears a moment after the track starts
   };
 
   window.addEventListener('keydown', (e) => {

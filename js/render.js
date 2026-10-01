@@ -902,7 +902,7 @@
   }
 
   function drawWind(canvas, wind, dpr) {
-    const size = 40;
+    const size = 30;
     if (canvas.width !== size * dpr) {
       canvas.width = size * dpr;
       canvas.height = size * dpr;
