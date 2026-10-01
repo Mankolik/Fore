@@ -1,13 +1,13 @@
 {
-  "name": "Golfy",
-  "short_name": "Golfy",
+  "name": "Fore! Pocket Golf",
+  "short_name": "Fore!",
   "description": "Pocket golf with real ball physics and procedurally generated courses.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
   "orientation": "portrait",
-  "background_color": "#1f3d1b",
-  "theme_color": "#1f3d1b",
+  "background_color": "#16310f",
+  "theme_color": "#16310f",
   "icons": [
     {
       "src": "icons/icon-192.png",

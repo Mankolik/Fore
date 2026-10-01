@@ -1,4 +1,6 @@
-# Golfy ⛳
+<p align="center"><img src="logo.svg" alt="Fore!" width="420"></p>
+
+# Fore!
 
 A mobile-first golf mini game for the browser: real ball physics, a classic
 three-click swing meter and endless procedurally generated 9-hole courses.
@@ -6,7 +8,7 @@ No build step and no dependencies, so it runs straight from GitHub Pages.
 
 ## Play offline / install as an app
 
-Golfy is an installable web app (PWA): after the first visit everything is cached on the device, so it
+Fore! is an installable web app (PWA): after the first visit everything is cached on the device, so it
 plays with no connection and launches full-screen from the home screen.
 
 - **iPhone / iPad (Safari):** open the site, tap **Share → Add to Home Screen**.

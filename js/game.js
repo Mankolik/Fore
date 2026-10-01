@@ -703,7 +703,7 @@
       if (t === T.OOB) {
         game.strokes++;
         game.settleT = 1.4;
-        toast('Out of bounds', 'Stroke & distance +1', 1600);
+        toast('Fore!', 'Out of bounds · stroke & distance +1', 1600);
         game.afterSettle = () => {
           b.x = game.shotStart.x;
           b.y = game.shotStart.y;

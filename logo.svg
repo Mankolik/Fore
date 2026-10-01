@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 140" role="img" aria-label="Fore!">
+  <defs>
+    <radialGradient id="fore-ball" cx="0.36" cy="0.3" r="0.78">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#f3efe2"/><stop offset="1" stop-color="#c9c1a8"/>
+    </radialGradient>
+    <pattern id="fore-dimples" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+      <circle cx="2.5" cy="2.5" r="1.9" fill="#b3ab90" opacity="0.5"/><circle cx="7.5" cy="7.5" r="1.9" fill="#b3ab90" opacity="0.5"/>
+    </pattern>
+    <clipPath id="fore-ballclip"><circle cx="144" cy="70" r="44"/></clipPath>
+  </defs>
+  <!-- flight: off the ball, over the letters, into the cup -->
+  <path d="M178 34 C232 -24 352 -28 368 106" fill="none" stroke="#f6f1e3" stroke-opacity="0.32" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+  <g transform="translate(16 0) skewX(-9)">
+    <g transform="translate(5 6)" fill="none" stroke="#0b1a09" stroke-opacity="0.45" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M34 115 V25 H82 M34 68 H72"/>
+      <path d="M210 115 V25 H238 a22 22 0 0 1 0 44 H210 M238 69 L264 115"/>
+      <path d="M338 25 H296 V115 H338 M296 70 H330"/>
+      <path d="M380 14 V86" stroke-width="15"/>
+    </g>
+    <g fill="none" stroke="#f6f1e3" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M34 115 V25 H82 M34 68 H72"/>
+      <path d="M210 115 V25 H238 a22 22 0 0 1 0 44 H210 M238 69 L264 115"/>
+      <path d="M338 25 H296 V115 H338 M296 70 H330"/>
+      <path d="M380 12 V88" stroke-width="15"/>
+    </g>
+    <path d="M387 6 C397 9 405 15 421 12 C414 21 407 30 387 34 Z" fill="#e8322b"/>
+  </g>
+  <!-- O: the ball (kept round, outside the slant) -->
+  <circle cx="149" cy="76" r="44" fill="#0b1a09" fill-opacity="0.45"/>
+  <circle cx="144" cy="70" r="44" fill="url(#fore-ball)"/>
+  <rect x="96" y="22" width="96" height="96" fill="url(#fore-dimples)" clip-path="url(#fore-ballclip)"/>
+  <!-- the dot of the !: the cup -->
+  <ellipse cx="375" cy="116" rx="17" ry="7.5" fill="#0b1a09"/>
+  <path d="M358 116.5 a17 7.5 0 0 0 34 0" fill="none" stroke="#f6f1e3" stroke-opacity="0.4" stroke-width="2.5"/>
+</svg>

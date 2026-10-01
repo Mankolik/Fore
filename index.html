@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#1f3d1b">
+  <meta name="theme-color" content="#16310f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="Golfy — a pocket golf game with real ball physics and endless procedurally generated courses.">
-  <title>Golfy</title>
+  <meta name="description" content="Fore! — a pocket golf game with real ball physics and endless procedurally generated courses.">
+  <title>Fore!</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <meta name="apple-mobile-web-app-title" content="Golfy">
+  <meta name="apple-mobile-web-app-title" content="Fore!">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -72,8 +72,44 @@
 
     <div id="menu" class="overlay">
       <div class="card">
-        <h1>Golfy<span class="flag">⛳</span></h1>
-        <p class="tag">Procedural pocket golf</p>
+        <h1><span class="sr-only">Fore!</span>
+          <svg class="logo" viewBox="0 0 430 140" aria-hidden="true">
+            <defs>
+              <radialGradient id="fore-ball" cx="0.36" cy="0.3" r="0.78">
+                <stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#f3efe2"/><stop offset="1" stop-color="#c9c1a8"/>
+              </radialGradient>
+              <pattern id="fore-dimples" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+                <circle cx="2.5" cy="2.5" r="1.9" fill="#b3ab90" opacity="0.5"/><circle cx="7.5" cy="7.5" r="1.9" fill="#b3ab90" opacity="0.5"/>
+              </pattern>
+              <clipPath id="fore-ballclip"><circle cx="144" cy="70" r="44"/></clipPath>
+            </defs>
+            <!-- flight: off the ball, over the letters, into the cup -->
+            <path d="M178 34 C232 -24 352 -28 368 106" fill="none" stroke="#f6f1e3" stroke-opacity="0.32" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+            <g transform="translate(16 0) skewX(-9)">
+              <g transform="translate(5 6)" fill="none" stroke="#0b1a09" stroke-opacity="0.45" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M34 115 V25 H82 M34 68 H72"/>
+                <path d="M210 115 V25 H238 a22 22 0 0 1 0 44 H210 M238 69 L264 115"/>
+                <path d="M338 25 H296 V115 H338 M296 70 H330"/>
+                <path d="M380 14 V86" stroke-width="15"/>
+              </g>
+              <g fill="none" stroke="#f6f1e3" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M34 115 V25 H82 M34 68 H72"/>
+                <path d="M210 115 V25 H238 a22 22 0 0 1 0 44 H210 M238 69 L264 115"/>
+                <path d="M338 25 H296 V115 H338 M296 70 H330"/>
+                <path d="M380 12 V88" stroke-width="15"/>
+              </g>
+              <path d="M387 6 C397 9 405 15 421 12 C414 21 407 30 387 34 Z" fill="#e8322b"/>
+            </g>
+            <!-- O: the ball (kept round, outside the slant) -->
+            <circle cx="149" cy="76" r="44" fill="#0b1a09" fill-opacity="0.45"/>
+            <circle cx="144" cy="70" r="44" fill="url(#fore-ball)"/>
+            <rect x="96" y="22" width="96" height="96" fill="url(#fore-dimples)" clip-path="url(#fore-ballclip)"/>
+            <!-- the dot of the !: the cup -->
+            <ellipse cx="375" cy="116" rx="17" ry="7.5" fill="#0b1a09"/>
+            <path d="M358 116.5 a17 7.5 0 0 0 34 0" fill="none" stroke="#f6f1e3" stroke-opacity="0.4" stroke-width="2.5"/>
+          </svg>
+        </h1>
+        <p class="tag">Pocket golf · endless courses</p>
         <div id="continue-wrap" class="hidden">
           <button class="primary" id="btn-continue">Continue round</button>
           <p class="small muted" id="continue-info"></p>

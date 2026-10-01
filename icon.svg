@@ -1,8 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#2f6b2a"/>
-  <ellipse cx="256" cy="360" rx="190" ry="92" fill="#7ece60"/>
-  <ellipse cx="256" cy="372" rx="26" ry="12" fill="#1b1b1b"/>
-  <rect x="250" y="96" width="12" height="276" rx="6" fill="#f4f4f4"/>
-  <path d="M262 100 L392 146 L262 196 Z" fill="#e8322b"/>
-  <circle cx="160" cy="330" r="30" fill="#fff" stroke="#cfcfcf" stroke-width="4"/>
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.15" r="1">
+      <stop offset="0" stop-color="#4f9441"/><stop offset="0.55" stop-color="#255521"/><stop offset="1" stop-color="#142c0e"/>
+    </radialGradient>
+    <radialGradient id="ball" cx="0.36" cy="0.3" r="0.78">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#f3efe2"/><stop offset="1" stop-color="#c3bba2"/>
+    </radialGradient>
+    <pattern id="dim" width="15" height="15" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+      <circle cx="3.7" cy="3.7" r="2.8" fill="#b3ab90" opacity="0.5"/><circle cx="11.2" cy="11.2" r="2.8" fill="#b3ab90" opacity="0.5"/>
+    </pattern>
+    <clipPath id="bc"><circle cx="250" cy="384" r="58"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="url(#bg)"/>
+  <ellipse cx="282" cy="436" rx="56" ry="16" fill="#0b1a09"/>
+  <g transform="translate(72 -14) skewX(-9)">
+    <path d="M240 78 V300" stroke="#0b1a09" stroke-opacity="0.4" stroke-width="58" stroke-linecap="round" transform="translate(8 10)"/>
+    <path d="M240 72 V296" stroke="#f6f1e3" stroke-width="58" stroke-linecap="round"/>
+    <path d="M272 50 C306 58 334 76 382 66 C362 94 342 116 272 128 Z" fill="#e8322b"/>
+  </g>
+  <circle cx="258" cy="394" r="58" fill="#0b1a09" fill-opacity="0.4"/>
+  <circle cx="250" cy="384" r="58" fill="url(#ball)"/>
+  <rect x="186" y="320" width="128" height="128" fill="url(#dim)" clip-path="url(#bc)"/>
 </svg>

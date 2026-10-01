@@ -320,7 +320,8 @@ button {
 }
 .card.wide { max-width: 560px; }
 .card h1 { margin: 0; font-size: 44px; letter-spacing: -0.02em; }
-.card h1 .flag { font-size: 34px; margin-left: 6px; }
+.card h1 .logo { display: block; width: 100%; max-width: 300px; height: auto; margin: -4px 0 0 -6px; overflow: visible; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .card h2 { margin: 0 0 4px; font-size: 26px; }
 .tag { margin: 2px 0 18px; color: var(--muted); }
 .field { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
