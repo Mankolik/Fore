@@ -48,9 +48,12 @@
   // Layout
   function resize() {
     const vw = window.innerWidth;
-    // Size to the app container (large viewport height) rather than innerHeight, which iOS home-screen
-    // apps can under-report, leaving a gap at the bottom.
-    const vh = Math.max(window.innerHeight, $('app').clientHeight);
+    const vh = window.innerHeight;
+    // A home-screen app normally gets the whole screen.  If its viewport stops well short of the screen
+    // height, iOS is keeping its own strip at the bottom, so the home-indicator padding isn't needed.
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
+    const fullH = vh >= vw ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    document.documentElement.classList.toggle('short-viewport', standalone && fullH - vh > 30);
     game.dpr = Math.min(window.devicePixelRatio || 1, 2);
     game.renderer.resize(vw, vh, game.dpr);
     const hudBottom = els.hud.getBoundingClientRect().bottom;
@@ -59,7 +62,8 @@
     game.bottomReserve = els.controls.getBoundingClientRect().top - 58;
     game.renderer.viewCenterY = (game.topReserve + game.bottomReserve) / 2;
     // Side buttons, minimap and notifications all start just below the HUD, so nothing overlaps it.
-    const top = hudBottom + 8;
+    // Menu button and minimap sit high on the left, just under the top panels, beside the lie strip.
+    const top = els.hudTop.getBoundingClientRect().bottom + 6;
     els.sideButtons.style.top = top + 'px';
     els.quickMenu.style.top = top + 'px';
     els.quickMenu.style.left = els.sideButtons.getBoundingClientRect().right + 8 + 'px';
@@ -73,6 +77,13 @@
     const room = game.bottomReserve - (els.sideButtons.getBoundingClientRect().bottom + 8) - 12; // meter labels sit just above bottomReserve
     const maxH = Math.max(50, Math.min(clamp((game.bottomReserve - game.topReserve) * 0.42, 100, 260), room));
     game.minimap = R.buildMinimap(game.hole, game.layers.main, maxW, maxH);
+    requestAnimationFrame(fitMessageLine);
+  }
+  // The message line sits level with the minimap, so keep it clear of the left column on both sides.
+  function fitMessageLine() {
+    const hud = els.hud.getBoundingClientRect();
+    const side = Math.max(els.minimap.getBoundingClientRect().right, els.sideButtons.getBoundingClientRect().right) - hud.left + 8;
+    els.notify.style.width = Math.max(160, hud.width - 2 * side) + 'px';
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
@@ -123,6 +134,7 @@
       snapCamera();
       R.drawWind(els.wind, hole.wind, game.dpr);
       updateHud(true);
+      resize(); // HUD contents changed: re-measure the layout
       const bio = hole.biome;
       if (i === 0 || !game.seenBiomeIntro) {
         game.seenBiomeIntro = true;
