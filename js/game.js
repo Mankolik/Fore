@@ -47,7 +47,10 @@
   // ---------------------------------------------------------------------------------------------
   // Layout
   function resize() {
-    const vw = window.innerWidth, vh = window.innerHeight;
+    const vw = window.innerWidth;
+    // Size to the app container (large viewport height) rather than innerHeight, which iOS home-screen
+    // apps can under-report, leaving a gap at the bottom.
+    const vh = Math.max(window.innerHeight, $('app').clientHeight);
     game.dpr = Math.min(window.devicePixelRatio || 1, 2);
     game.renderer.resize(vw, vh, game.dpr);
     const hudBottom = els.hud.getBoundingClientRect().bottom;
@@ -61,24 +64,15 @@
     els.quickMenu.style.top = top + 'px';
     els.quickMenu.style.left = els.sideButtons.getBoundingClientRect().right + 8 + 'px';
     els.minimap.style.top = els.sideButtons.getBoundingClientRect().bottom + 8 + 'px';
-    els.notify.style.top = top + 'px';
     if (game.hole && game.layers) buildMinimap();
-    layoutNotify();
-  }
-  // Notifications fill the gap between the side buttons and the minimap.
-  function layoutNotify() {
-    const vw = window.innerWidth;
-    // Left column holds the menu button and minimap; messages use the rest of the width.
-    const left = Math.max(els.sideButtons.getBoundingClientRect().right, els.minimap.getBoundingClientRect().right) + 8;
-    els.notify.style.left = left + 'px';
-    els.notify.style.right = Math.max(8, vw - left - 520) + 'px';
   }
   function buildMinimap() {
     const vw = window.innerWidth;
     const maxW = clamp(vw * 0.2, 60, 120);
-    const maxH = clamp((game.bottomReserve - game.topReserve) * 0.42, 100, 260);
+    // Never let the minimap reach down over the power meter (matters on short screens).
+    const room = game.bottomReserve - (els.sideButtons.getBoundingClientRect().bottom + 8) - 12; // meter labels sit just above bottomReserve
+    const maxH = Math.max(50, Math.min(clamp((game.bottomReserve - game.topReserve) * 0.42, 100, 260), room));
     game.minimap = R.buildMinimap(game.hole, game.layers.main, maxW, maxH);
-    requestAnimationFrame(layoutNotify); // minimap size changes per hole
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
@@ -116,7 +110,7 @@
       game.hole = hole;
       game.layers = R.buildHoleLayers(hole);
       buildMinimap();
-      for (const k of ['result', 'strike', 'event', 'lie', 'swing']) dismiss(k, true);
+      for (const k of ['result', 'strike', 'event', 'lie', 'swing']) dismiss(k);
       game.ball = P.createBall(hole.tee.x, hole.tee.y, hole);
       game.strokes = 0;
       game.trail = [];
@@ -183,10 +177,10 @@
     return { id, ...LIE_EFFECT[id], label: text[0], note: text[1] };
   }
   const LIE_SHORT = {
-    flyer: '+6% distance, little spin',
-    down: '−10%, harder to strike',
-    buried: '−12%, easy to mishit',
-    divot: '−7%, harder to strike',
+    flyer: '+6%, little spin',
+    down: '−10%, tricky',
+    buried: '−12%, risky',
+    divot: '−7%, tricky',
     plugged: '−30%, no spin',
   };
   const LIE_EFFECT = {
@@ -212,11 +206,11 @@
   // Lie-adjusted distance for a club/shot: carry, or total (carry + roll) for chips and punches.
   const distCache = new Map();
   const BIOME_TIPS = {
-    desert: 'Thin air: the ball flies further and runs on baked fairways',
-    alien: 'Low gravity: ~40% more carry. Avoid the acid!',
-    links: 'Firm, windy links: expect lots of run',
-    winter: 'Snow stops the ball dead; frozen ponds are slippery',
-    volcanic: 'Lava swallows balls; bunkers are black sand',
+    desert: 'Thin air: more carry, fast fairways',
+    alien: 'Low gravity: ~40% more carry',
+    links: 'Firm and windy: expect lots of run',
+    winter: 'Snow stops the ball; ponds are ice',
+    volcanic: 'Lava is a hazard — keep it dry',
   };
   const terrainName = (t) => (game.hole && game.hole.biome.names[t]) || Golf.TERRAIN_NAMES[t];
   function metricAt(clubIdx, shot, lie, power) {
@@ -355,7 +349,7 @@
       els.clubTitle.textContent = c.name;
       const risk = Math.min(0.97, P.mishitRisk(idx, game.shot, game.lie) + (game.lieCond ? game.lieCond.risk : 0));
       const distLabel = `${Math.round(game.lieFull)} m ${game.metric}${game.lieFx.label ? ' (' + game.lieFx.label + ')' : ''}`;
-      els.clubDist.textContent = risk >= 0.05 ? `⚠ ${Math.round(risk * 100)}% mishit · ${Math.round(game.lieFull)} m` : distLabel;
+      els.clubDist.textContent = risk >= 0.05 ? `⚠ ${Math.round(risk * 100)}% mishit risk · ${Math.round(game.lieFull)} m` : distLabel;
       els.clubDist.classList.toggle('risky', risk >= 0.25);
       game.showSlopes = game.shot === 'chip';
     }
@@ -439,9 +433,9 @@
 
   const MISHIT_TEXT = {
     fat: 'Chunked it — heavy contact!',
-    thin: 'Thinned it — caught it low on the face!',
+    thin: 'Thinned it — low on the face!',
     top: 'Topped it!',
-    blade: 'Bladed the flop — no spin!',
+    blade: 'Bladed the flop!',
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -528,6 +522,7 @@
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
     update(dt);
+    rotateNotes(now);
     game.renderer.draw(game, now / 1000);
     drawMeter();
     if (game.hole && game.minimap) R.drawMinimap(els.minimap, game);
@@ -648,10 +643,15 @@
           break;
         case 'lip':
           audio.play('lip');
-          notify('Lipped out!', { key: 'event', level: 'warn', ms: 3500, pri: 2 });
+          notify('Lipped out — too firm to drop', { key: 'event', level: 'warn', ms: 4500, pri: 2 });
+          break;
+        case 'over':
+          audio.play('lip');
+          notify('Raced over the hole — too firm', { key: 'event', level: 'warn', ms: 4500, pri: 2 });
           break;
         case 'holed':
           audio.play('cup');
+          if (ev.rattle) notify('Rattled in off the back!', { key: 'event', level: 'good', ms: 3000, pri: 2 });
           spray(b.x, b.y, 'rgba(255,225,110,A)', 20, 2, 3, 0.2, true);
           break;
       }
@@ -908,41 +908,69 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => els.toast.classList.remove('show'), ms);
   }
-  // Notifications: up to three stacked messages.  Each has a key (a new message with the same key updates
-  // it in place), a level for its colour, a lifetime (0 = stays until dismissed) and a priority so
-  // background chatter (music, tips) never pushes out something important like a mishit.
+  // Message dock: one reserved line in the HUD shows the most important active message (newest first
+  // among equals), with a "+N" count and a gentle rotation when several are active.  Each message has a
+  // key (same key updates in place), a level for colour, a lifetime (0 = until dismissed) and a priority.
   const notes = new Map();
   const NOTE_ICON = { good: '✓ ', warn: '⚠ ', bad: '⚠ ', info: '', result: '', music: '' };
+  let noteSeq = 0, noteShown = null, noteRotateAt = 0;
   function notify(text, { key = text, level = 'info', ms = 2600, pri = 1 } = {}) {
-    let n = notes.get(key);
-    if (!n) {
-      if (notes.size >= 3) {
-        // Make room by dropping the least important (oldest first); give up if everything outranks us.
-        let victim = null;
-        for (const [k, v] of notes) if (!victim || v.pri < victim.pri) victim = { k, pri: v.pri };
-        if (victim.pri > pri) return;
-        dismiss(victim.k, true);
-      }
-      const el = document.createElement('div');
-      el.addEventListener('click', () => dismiss(key));
-      els.notify.append(el);
-      n = { el };
-      notes.set(key, n);
-    }
-    n.pri = pri;
-    n.el.className = 'note ' + level;
-    n.el.textContent = (NOTE_ICON[level] || '') + text;
-    clearTimeout(n.timer);
+    const old = notes.get(key);
+    if (old) clearTimeout(old.timer);
+    const n = { text, level, pri, seq: ++noteSeq };
     if (ms > 0) n.timer = setTimeout(() => dismiss(key), ms);
+    notes.set(key, n);
+    // New information shows straight away unless something more important is on screen.
+    const cur = noteShown && notes.get(noteShown);
+    if (!cur || cur === n || pri >= cur.pri) noteShown = key;
+    noteRotateAt = performance.now() + 2800;
+    renderNotes();
   }
-  function dismiss(key, now = false) {
+  function dismiss(key) {
     const n = notes.get(key);
     if (!n) return;
-    notes.delete(key);
     clearTimeout(n.timer);
-    if (now) return n.el.remove();
-    n.el.classList.add('out');
-    setTimeout(() => n.el.remove(), 300);
+    notes.delete(key);
+    if (noteShown === key) noteShown = null;
+    renderNotes();
+  }
+  function orderedNotes() {
+    return [...notes.entries()].sort((a, b) => b[1].pri - a[1].pri || b[1].seq - a[1].seq);
+  }
+  function renderNotes() {
+    const list = orderedNotes();
+    if (!list.length) { els.notify.innerHTML = ''; noteShown = null; return; }
+    if (!noteShown || !notes.has(noteShown)) noteShown = list[0][0];
+    const n = notes.get(noteShown);
+    let el = els.notify.firstChild;
+    if (!el || el.dataset.key !== noteShown || el.dataset.seq !== String(n.seq)) {
+      els.notify.innerHTML = '';
+      el = document.createElement('div');
+      el.dataset.key = noteShown;
+      el.dataset.seq = n.seq;
+      el.addEventListener('click', () => dismiss(el.dataset.key));
+      els.notify.append(el);
+    }
+    el.className = 'note ' + n.level;
+    el.innerHTML = '';
+    const t = document.createElement('span');
+    t.className = 'txt';
+    t.textContent = (NOTE_ICON[n.level] || '') + n.text;
+    el.append(t);
+    if (list.length > 1) {
+      const m = document.createElement('span');
+      m.className = 'more';
+      m.textContent = '+' + (list.length - 1);
+      el.append(m);
+    }
+  }
+  // Rotate through several active messages so none is missed (called from the frame loop).
+  function rotateNotes(now) {
+    if (notes.size < 2 || now < noteRotateAt) return;
+    const list = orderedNotes().map((e) => e[0]);
+    noteShown = list[(list.indexOf(noteShown) + 1) % list.length];
+    noteRotateAt = now + 2800;
+    renderNotes();
   }
   const setHint = (text, ms = 2600) => (text ? notify(text, { ms }) : null);
 

@@ -516,19 +516,32 @@
     // Cup.
     const dx = ball.x - hole.pin.x, dy = ball.y - hole.pin.y;
     const d = Math.hypot(dx, dy);
-    if (d < CUP_R) {
-      if (sp < 1.45) {
+    if (d < CUP_R && !ball.lipped) {
+      // How centred is the ball's path?  0 = straight at the middle, 1 = just clipping the edge.
+      const off = sp > 1e-6 ? Math.min(1, Math.abs(dx * ball.vy - dy * ball.vx) / sp / CUP_R) : 0;
+      // A dead-centre putt drops up to ~1.75 m/s (it rattles off the back of the cup); an edge-clipper
+      // has to be dying into the hole.
+      const vmax = 1.75 * (1 - 0.55 * off * off);
+      if (sp < vmax) {
         ball.state = 'holed';
         ball.x = hole.pin.x; ball.y = hole.pin.y;
-        events.push({ type: 'holed' });
+        events.push({ type: 'holed', rattle: sp > 1.25 });
         return;
       }
-      if (!ball.lipped && sp < 2.2) {
-        ball.lipped = true;
-        const ang = Math.atan2(ball.vy, ball.vx) + (rand() - 0.5) * 1.6;
-        ball.vx = Math.cos(ang) * sp * 0.55;
-        ball.vy = Math.sin(ang) * sp * 0.55;
+      ball.lipped = true;
+      const side = Math.sign(dx * ball.vy - dy * ball.vx) || 1;
+      if (sp < vmax + 0.9) {
+        // Lip-out: caught the rim and spun out, away from the side it caught.
+        const ang = Math.atan2(ball.vy, ball.vx) - side * (0.35 + 0.8 * off) + (rand() - 0.5) * 0.3;
+        ball.vx = Math.cos(ang) * sp * 0.6;
+        ball.vy = Math.sin(ang) * sp * 0.6;
         events.push({ type: 'lip' });
+      } else {
+        // Far too firm: it skips straight over the hole.
+        const ang = Math.atan2(ball.vy, ball.vx) + (rand() - 0.5) * 0.2;
+        ball.vx = Math.cos(ang) * sp * 0.9;
+        ball.vy = Math.sin(ang) * sp * 0.9;
+        events.push({ type: 'over' });
       }
     } else if (d > CUP_R * 2) {
       ball.lipped = false;

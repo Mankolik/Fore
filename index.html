@@ -35,7 +35,8 @@
           <div class="small" id="wind-label">0 m/s</div>
         </div>
       </div>
-  <div id="info-strip"><span id="lie-label">Tee box</span><span class="dot">·</span><span id="dist-label">0 m to pin</span></div>
+      <div id="info-strip"><span id="lie-label">Tee box</span><span class="dot">·</span><span id="dist-label">0 m to pin</span></div>
+      <div id="notify" aria-live="polite"></div>
     </div>
 
     <canvas id="minimap" title="Tap to toggle overview"></canvas>
@@ -52,7 +53,6 @@
     </div>
 
     <div id="toast"></div>
-    <div id="notify" aria-live="polite"></div>
 
     <div id="controls">
       <div id="shot-row" role="radiogroup" aria-label="Shot type"></div>
@@ -106,6 +106,7 @@
             <li><b>Worlds:</b> each seed is set in a world — parkland, desert, alien (low gravity!), coastal links, winter (slippery frozen ponds) or volcanic (lava). The preview above shows which; tap 🎲 for another.</li>
             <li>Wind, slopes, lie, trees, bunkers and water all matter. Arrows on the green show the slope when putting.</li>
             <li>Hold the button during a shot to fast-forward.</li>
+            <li><b>Lip-outs:</b> a putt that catches the hole only drops if it isn't rolling too fast. Dead-centre putts can be firm (they rattle in off the back); one clipping the edge has to be dying. Too firm and it lips out — or races straight over.</li>
             <li><b>Menu (☰):</b> scorecard, sound effects, music on/off, next track and the main menu. Tap the minimap for an overview of the hole.</li>
             <li>Desktop: mouse to aim, click/space to swing, ←/→ fine aim, ↑/↓ clubs, S next shot type, N next music track.</li>
           </ul>
