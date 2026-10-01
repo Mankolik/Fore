@@ -43,7 +43,7 @@
     three: { name: '¾', desc: 'Controlled ¾ swing', speed: 0.7, launch: 1.08, lift: 1, bite: 1.1, spread: 0.05, loss: 0.2, swing: [0.45, 0.45] },
     chip: { name: 'Chip', desc: 'Low bump & run — safest near the green', launch: 0.75, lift: 0.6, bite: 0.35, metric: 'total', surface: 'green', spread: 0.015, loss: 0.05, swing: [0.15, 0.5] },
     flop: { name: 'Flop', desc: 'High & soft — big swing, risky off tight lies', speed: 0.62, launchAbs: 54, lift: 1.1, bite: 1.5, spread: 0.08, loss: 0.35, swing: [0.8, 0.2] },
-    punch: { name: 'Punch', desc: 'Low under trees', speed: 0.8, launch: 0.45, lift: 0.4, bite: 0.4, metric: 'total', surface: 'fairway', spread: 0.03, loss: 0.1, swing: [0, 0.9] },
+    punch: { name: 'Punch', desc: 'Low under trees', speed: 0.82, launch: 0.6, lift: 0.9, bite: 0.6, metric: 'total', surface: 'fairway', spread: 0.03, loss: 0.1, swing: [0, 0.9] },
     putt: { name: 'Putt', desc: 'Roll it', metric: 'total', spread: 0.012, loss: 0, swing: [0, 1] },
   };
   function swingSize(shot, power) {
