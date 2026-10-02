@@ -2,7 +2,7 @@
 (function () {
   const Golf = globalThis.Golf;
   const T = Golf.T;
-  const { clamp, lerp } = Golf.util;
+  const { clamp, lerp, smoothstep } = Golf.util;
   const hash2 = Golf.hash2;
 
   const ZK = 0.55; // how far (in metres of screen-up) one metre of height is drawn
@@ -352,7 +352,105 @@
   function buildHoleLayers(hole) {
     const ppm = Math.min(3, Math.sqrt(2.4e6 / (hole.W * hole.L)));
     const main = buildLayer(hole, 0, 0, hole.W, hole.L, ppm);
-    return { main, green: null };
+    const surround = buildSurround(hole, main);
+    featherEdges(main, 26);
+    return { main, surround, green: null };
+  }
+
+  // Beyond the mapped hole: a low-detail, soft-focus landscape (2 m pixels, smoothed when scaled up).
+  // Under the hole's feathered edge it is a coarse average of the hole; outside it continues those colours, then turns into rolling scrub with tree clumps, and
+  // far out it fades into the world's base colour.
+  const SURROUND_M = 240;
+  function buildSurround(hole, main) {
+    const ppm = 0.5, M = SURROUND_M;
+    const w = hole.W + 2 * M, h = hole.L + 2 * M;
+    const cw = Math.round(w * ppm), ch = Math.round(h * ppm);
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    const ix0 = Math.round(M * ppm), iy0 = Math.round(M * ppm);
+    const iw = Math.round(hole.W * ppm), ih = Math.round(hole.L * ppm);
+    const img = ctx.createImageData(cw, ch);
+    const data = img.data;
+    // A coarse average of the hole (16 m cells) gives smooth edge colours to continue outward.
+    const cell = 16;
+    const sw = Math.max(2, Math.ceil(hole.W / cell)), sh = Math.max(2, Math.ceil(hole.L / cell));
+    const small = document.createElement('canvas');
+    small.width = sw;
+    small.height = sh;
+    const sctx = small.getContext('2d');
+    sctx.imageSmoothingQuality = 'high';
+    sctx.drawImage(main.canvas, 0, 0, sw, sh);
+    const avg = sctx.getImageData(0, 0, sw, sh).data;
+    const edgeAt = (x, y, out) => {
+      const u = clamp(x / cell - 0.5, 0, sw - 1.001), v = clamp(y / cell - 0.5, 0, sh - 1.001);
+      const i = u | 0, j = v | 0, fu = u - i, fv = v - j;
+      for (let ch4 = 0; ch4 < 3; ch4++) {
+        const a = avg[(j * sw + i) * 4 + ch4], b = avg[(j * sw + i + 1) * 4 + ch4];
+        const c = avg[((j + 1) * sw + i) * 4 + ch4], d = avg[((j + 1) * sw + i + 1) * 4 + ch4];
+        out[ch4] = lerp(lerp(a, b, fu), lerp(c, d, fu), fv);
+      }
+      return out;
+    };
+    const edge = [0, 0, 0];
+    const biome = hole.biome || Golf.BIOMES.parkland;
+    const pal = biome.colors;
+    const oob = pal[T.OOB] || COLORS[T.OOB], deep = pal[T.DEEP] || COLORS[T.DEEP];
+    const bg = hexRgb(biome.bg || '#35602e');
+    const noise = new Golf.Noise2D(hole.seed ^ 0x5a17);
+    for (let py = 0; py < ch; py++) {
+      const y = py / ppm - M;
+      const cy = clamp(py, iy0, iy0 + ih - 1);
+      for (let px = 0; px < cw; px++) {
+        const x = px / ppm - M;
+        const cx = clamp(px, ix0, ix0 + iw - 1);
+        const dist = Math.hypot(px - cx, py - cy) / ppm;
+        edgeAt(x, y, edge);
+        // Rolling scrub: patches of deep rough over the out-of-bounds ground, darker clumps of trees.
+        const n = noise.fbm(x / 45, y / 45, 3);
+        const k = clamp(0.5 + n * 1.4, 0, 1);
+        let r = lerp(oob[0], deep[0], k), g = lerp(oob[1], deep[1], k), b = lerp(oob[2], deep[2], k);
+        const trees = smoothstep(0.08, 0.3, noise.fbm(x / 20 + 31, y / 20 - 17, 2));
+        const shade = (1 - 0.32 * trees) * (1 + noise.value(x / 70, y / 70) * 0.1);
+        r *= shade; g *= shade; b *= shade;
+        const near = smoothstep(0, 60, dist);
+        r = lerp(edge[0], r, near); g = lerp(edge[1], g, near); b = lerp(edge[2], b, near);
+        const far = smoothstep(50, 210, dist);
+        const o = (py * cw + px) * 4;
+        data[o] = lerp(r, bg[0], far);
+        data[o + 1] = lerp(g, bg[1], far);
+        data[o + 2] = lerp(b, bg[2], far);
+        data[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return { canvas, x0: -M, y0: -M, w, h, ppm };
+  }
+  function hexRgb(hex) {
+    const v = parseInt(hex.slice(1), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  }
+  // Fade a layer's outer edge to transparent so it melts into the soft surround instead of ending in a line.
+  function featherEdges(layer, metres) {
+    const ctx = layer.canvas.getContext('2d');
+    const cw = layer.canvas.width, ch = layer.canvas.height;
+    const f = Math.min(metres * layer.ppm, cw / 4, ch / 4);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'destination-out';
+    const side = (x0, y0, x1, y1, rx, ry, rw, rh) => {
+      const gr = ctx.createLinearGradient(x0, y0, x1, y1);
+      gr.addColorStop(0, 'rgba(0,0,0,1)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(rx, ry, rw, rh);
+    };
+    side(0, 0, f, 0, 0, 0, f, ch);
+    side(cw, 0, cw - f, 0, cw - f, 0, f, ch);
+    side(0, 0, 0, f, 0, 0, cw, f);
+    side(0, ch, 0, ch - f, 0, ch - f, cw, f);
+    ctx.globalCompositeOperation = 'source-over';
   }
   function buildGreenLayer(hole) {
     // Detailed layer around the green: covers chips, bunker shots and putts.
@@ -367,7 +465,11 @@
     c.height = Math.round(hole.L * s);
     const ctx = c.getContext('2d');
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(layer.canvas, 0, 0, c.width, c.height);
+    ctx.fillStyle = (hole.biome && hole.biome.bg) || '#35602e';
+    ctx.fillRect(0, 0, c.width, c.height);
+    const S = layer.surround;
+    if (S) ctx.drawImage(S.canvas, -S.x0 * S.ppm, -S.y0 * S.ppm, hole.W * S.ppm, hole.L * S.ppm, 0, 0, c.width, c.height);
+    ctx.drawImage(layer.main ? layer.main.canvas : layer.canvas, 0, 0, c.width, c.height);
     return { canvas: c, scale: s };
   }
 
@@ -518,6 +620,8 @@
 
       this.setWorld(cam);
       ctx.imageSmoothingEnabled = true;
+      const S = game.layers.surround;
+      if (S) ctx.drawImage(S.canvas, S.x0, S.y0, S.w, S.h);
       const L = game.layers.main;
       ctx.drawImage(L.canvas, L.x0, L.y0, L.w, L.h);
       if (game.layers.green && cam.scale > 2.5) {

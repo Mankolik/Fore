@@ -76,14 +76,18 @@
     // Never let the minimap reach down over the power meter (matters on short screens).
     const room = game.bottomReserve - (els.sideButtons.getBoundingClientRect().bottom + 8) - 12; // meter labels sit just above bottomReserve
     const maxH = Math.max(50, Math.min(clamp((game.bottomReserve - game.topReserve) * 0.42, 100, 260), room));
-    game.minimap = R.buildMinimap(game.hole, game.layers.main, maxW, maxH);
+    game.minimap = R.buildMinimap(game.hole, game.layers, maxW, maxH);
     requestAnimationFrame(fitMessageLine);
   }
   // The message line sits level with the minimap, so keep it clear of the left column on both sides.
   function fitMessageLine() {
     const hud = els.hud.getBoundingClientRect();
     const side = Math.max(els.minimap.getBoundingClientRect().right, els.sideButtons.getBoundingClientRect().right) - hud.left + 8;
-    els.notify.style.width = Math.max(160, hud.width - 2 * side) + 'px';
+    // Centred when there's room; on narrow phones use all the width right of the minimap instead.
+    const centred = hud.width - 2 * side >= 360;
+    els.notify.style.alignSelf = centred ? '' : 'flex-start';
+    els.notify.style.marginLeft = centred ? '' : side + 'px';
+    els.notify.style.width = (centred ? hud.width - 2 * side : hud.width - side) + 'px';
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
@@ -156,7 +160,7 @@
     b.z = hole.height(b.x, b.y);
     game.lie = hole.terrainAt(b.x, b.y);
     game.lieCond = rollLieCondition(game.lie);
-    if (game.lieCond) notify(`${game.lieCond.label}: ${LIE_SHORT[game.lieCond.id]}`, { key: 'lie', level: 'warn', ms: 6000, pri: 2 });
+    if (game.lieCond) notify(`${game.lieCond.label}: ${LIE_SHORT[game.lieCond.id]}`, { key: 'lie', level: 'warn', ms: 0, pri: 2 }); // stays until the swing
     const dist = distToPin();
     game.aim = Math.atan2(hole.pin.y - b.y, hole.pin.x - b.x);
     const pick = pickShot(dist);
@@ -189,11 +193,11 @@
     return { id, ...LIE_EFFECT[id], label: text[0], note: text[1] };
   }
   const LIE_SHORT = {
-    flyer: '+6%, little spin',
-    down: '−10%, tricky',
-    buried: '−12%, risky',
-    divot: '−7%, tricky',
-    plugged: '−30%, no spin',
+    flyer: '+6% distance, little spin',
+    down: '−10% distance, less spin',
+    buried: '−12% distance, less spin',
+    divot: '−7% distance, less spin',
+    plugged: '−30% distance, no spin',
   };
   const LIE_EFFECT = {
     flyer: { speed: 1.06, spin: 0.5, risk: 0 },
@@ -1432,5 +1436,5 @@
   }
 
   Golf.game = game;
-  Golf.debug = { setupShot, setShot }; // used by the browser playtests
+  Golf.debug = { setupShot, setShot, notify }; // used by the browser playtests
 })();

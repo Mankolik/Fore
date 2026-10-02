@@ -519,13 +519,13 @@
     if (d < CUP_R && !ball.lipped) {
       // How centred is the ball's path?  0 = straight at the middle, 1 = just clipping the edge.
       const off = sp > 1e-6 ? Math.min(1, Math.abs(dx * ball.vy - dy * ball.vx) / sp / CUP_R) : 0;
-      // A dead-centre putt drops up to ~1.75 m/s (it rattles off the back of the cup); an edge-clipper
-      // has to be dying into the hole.
-      const vmax = 1.75 * (1 - 0.55 * off * off);
+      // A dead-centre putt drops up to ~2.1 m/s (it rattles off the back of the cup); only a putt that
+      // barely clips the edge needs to be dying.  A firm putt that would run ~1.5 m past still drops.
+      const vmax = 2.1 * (1 - 0.4 * off * off * off);
       if (sp < vmax) {
         ball.state = 'holed';
         ball.x = hole.pin.x; ball.y = hole.pin.y;
-        events.push({ type: 'holed', rattle: sp > 1.25 });
+        events.push({ type: 'holed', rattle: sp > 1.5 });
         return;
       }
       ball.lipped = true;

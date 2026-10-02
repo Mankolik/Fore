@@ -169,15 +169,16 @@ button {
 #notify {
   width: calc(100% - 100px);
   max-width: 560px;
-  height: 30px;
+  min-height: 30px;
   display: flex;
+  align-items: flex-start;
   justify-content: center;
   pointer-events: none;
 }
 .note {
   pointer-events: auto;
   max-width: 100%;
-  height: 30px;
+  min-height: 30px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -185,13 +186,14 @@ button {
   border: 1px solid var(--panel-border);
   border-left: 4px solid #9fb59a;
   border-radius: 10px;
-  padding: 0 12px;
+  padding: 5px 12px;
   font-size: 13.5px;
-  white-space: nowrap;
+  line-height: 1.25;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   animation: note-in 0.2s ease-out;
 }
-.note .txt { overflow: hidden; text-overflow: ellipsis; }
+/* Long messages wrap rather than being cut off. */
+.note .txt { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .note .more { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--muted); background: rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 1px 6px; }
 .note.good { border-left-color: #5dd36b; }
 .note.warn { border-left-color: #ffb020; }
@@ -199,7 +201,7 @@ button {
 .note.result { border-left-color: #8fc3ff; font-weight: 600; }
 .note.music { border-left-color: #c79bff; }
 @keyframes note-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@media (max-width: 380px) { .note { font-size: 12.5px; padding: 0 10px; } }
+@media (max-width: 380px) { .note { font-size: 12.5px; padding: 4px 10px; } }
 #hint:empty { opacity: 0; }
 
 /* ---- Bottom controls ---- */
