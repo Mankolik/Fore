@@ -369,9 +369,10 @@
       dir = aim + e * 0.045 * k + (gauss(rand) * DISPERSION[g] * (shot === 'punch' ? 0.8 : 1) * Math.PI) / 180;
       side = e * 0.065 * k;
     }
-    // Gusts: the wind this shot actually meets varies around the forecast.
-    ball.windK = (LONG_GAME(shot) ? WIND_K : 1) * ENV_WIND;
-    ball.gust = LONG_GAME(shot) ? { k: Math.max(0.3, 1 + gauss(rand) * 0.22), a: gauss(rand) * 0.14 } : null;
+    // Gusts: the wind this shot actually meets varies around the forecast.  Every shot in the air feels
+    // it, wedges and soft pitches included; low chips are spared mostly by staying under it (see airStep).
+    ball.windK = WIND_K * ENV_WIND;
+    ball.gust = { k: Math.max(0.3, 1 + gauss(rand) * 0.22), a: gauss(rand) * 0.14 };
     const vh = speed * Math.cos(launchA);
     ball.vx = Math.cos(dir) * vh;
     ball.vy = Math.sin(dir) * vh;
@@ -413,10 +414,13 @@
     const hsp = Math.hypot(rx, ry) || 1e-6;
     // Drag.
     let ax = -KD * sp * rx, ay = -KD * sp * ry, az = -KD * sp * rz - G;
-    // Backspin lift, perpendicular to the relative velocity in its vertical plane.
+    // Backspin lift, perpendicular to the relative velocity in its vertical plane.  Lift grows with
+    // airspeed times spin, not airspeed squared (the lift coefficient falls as the spin ratio drops), so a
+    // headwind doesn't balloon slow, spinny wedges into carrying as far as they would in calm air.
     const lx = -rx * rz, ly = -ry * rz, lz = hsp * hsp;
     const ln = Math.hypot(lx, ly, lz) || 1e-6;
-    const L = (KL * ball.spin * sp * sp) / ln;
+    const gsp = Math.hypot(ball.vx, ball.vy, ball.vz);
+    const L = (KL * ball.spin * sp * gsp) / ln;
     ax += lx * L; ay += ly * L; az += lz * L;
     // Sidespin: push to the right of travel (screen coords, y down => right = (-vy, vx)).
     const S = KL * ball.side * sp * sp;

@@ -66,6 +66,8 @@
         <button class="aim-btn" id="aim-right" aria-label="Aim right">⟳</button>
       </div>
       <button id="swing-btn">HOLD TO SWING</button>
+      <!-- While swinging, the whole control area (and a margin above it) acts as the swing button. -->
+      <div id="swing-zone" aria-hidden="true"></div>
     </div>
 
     <div id="loading" class="overlay hidden"><div class="spinner"></div><div id="loading-text">Building hole…</div></div>
@@ -122,6 +124,7 @@
         </label>
         <p class="course-name" id="course-preview"></p>
         <button class="primary" id="btn-play">Tee off</button>
+        <button class="secondary" id="btn-records">🏆 Best &amp; worst rounds</button>
         <div id="install-wrap">
           <button class="secondary hidden" id="btn-install">📲 Install app (plays offline)</button>
           <p class="small muted hidden" id="install-ios">To install on iPhone: tap <b>Share</b> → <b>Add to Home Screen</b>. It then works offline.</p>
@@ -144,6 +147,7 @@
             <li>Wind, slopes, lie, trees, bunkers and water all matter. Arrows on the green show the slope when putting.</li>
             <li>Hold the button during a shot to fast-forward.</li>
             <li><b>Lip-outs:</b> a putt that catches the hole only drops if it isn't rolling too fast. Dead-centre putts can be firm (they rattle in off the back); one clipping the edge has to be dying. Too firm and it lips out — or races straight over.</li>
+            <li><b>Your rounds:</b> 🏆 on the main menu lists your best and worst finished rounds with the course, seed and scorecard — replay any of them.</li>
             <li><b>Menu (☰):</b> scorecard, sound effects, music on/off, next track and the main menu. Tap the minimap for an overview of the hole.</li>
             <li>Desktop: mouse to aim, click/space to swing, ←/→ fine aim, ↑/↓ clubs, S next shot type, N next music track.</li>
           </ul>
@@ -156,8 +160,16 @@
         <h2 id="sc-title">Scorecard</h2>
         <p class="course-name" id="sc-course"></p>
         <div id="sc-result"></div>
-        <div class="table-wrap"><table id="sc-table"></table></div>
+        <div class="table-wrap"><table id="sc-table" class="sc-table"></table></div>
         <div class="btn-row" id="sc-buttons"></div>
+      </div>
+    </div>
+
+    <div id="records" class="overlay hidden">
+      <div class="card wide">
+        <h2>Your rounds</h2>
+        <div id="records-body"></div>
+        <button class="secondary" id="btn-records-close">Close</button>
       </div>
     </div>
   </div>
