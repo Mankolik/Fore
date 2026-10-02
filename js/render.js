@@ -353,8 +353,117 @@
     const ppm = Math.min(3, Math.sqrt(2.4e6 / (hole.W * hole.L)));
     const main = buildLayer(hole, 0, 0, hole.W, hole.L, ppm);
     const surround = buildSurround(hole, main);
-    featherEdges(main, 26);
-    return { main, surround, green: null };
+    featherEdges(main, 10);
+    // The crisp near band (buildNearBand) and the detailed green are added once the hole is on screen.
+    return { main, near: null, surround, green: null };
+  }
+
+  // A crisp band of countryside around the hole (same detail as the course: mottled ground, scrub and
+  // the hole's own kinds of trees), which dissolves into the soft distant surround.
+  const NEAR_M = 70;
+  function buildNearBand(hole) {
+    const M = NEAR_M;
+    const w = hole.W + 2 * M, h = hole.L + 2 * M;
+    const ppm = Math.min(1.6, Math.sqrt(9e5 / (w * h)));
+    const cw = Math.round(w * ppm), ch = Math.round(h * ppm);
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(cw, ch);
+    const data = img.data;
+    const biome = hole.biome || Golf.BIOMES.parkland;
+    const pal = biome.colors;
+    const oob = pal[T.OOB] || COLORS[T.OOB], deep = pal[T.DEEP] || COLORS[T.DEEP];
+    const noise = new Golf.Noise2D(hole.seed ^ 0x5a17); // same fields as the far surround, so they line up
+    // The course's own elevation formula (same noise seed as course.js), so bumps and dunes carry on.
+    const hn = new Golf.Noise2D(hole.seed ^ 0x2545f491);
+    const gen = biome.gen || {};
+    const amp = gen.heightAmp ?? 1, dunes = gen.dunes || 0;
+    const elev = (x, y) => {
+      let e = (hn.fbm(x / 160, y / 160, 3) * 5 + hn.fbm(x / 45 + 50, y / 45, 2)) * amp + hn.value(x / 9, y / 9 + 40) * 0.35;
+      if (dunes) {
+        const rid = 1 - Math.abs(hn.value(x / 22 + 300, y / 22));
+        e += dunes * (rid * rid * 2.2 - 0.8);
+      }
+      return e;
+    };
+    // Elevation on a 1 m grid (only where the band is drawn), then slope from bilinear samples.
+    const gw = Math.ceil(w) + 2, gh = Math.ceil(h) + 2;
+    // The same grid carries the scrub mix and broad mottling, which vary slowly too.
+    const grid = new Float32Array(gw * gh), mixG = new Float32Array(gw * gh), mottG = new Float32Array(gw * gh);
+    for (let j = 0; j < gh; j++) {
+      const y = j - M - 1;
+      for (let i = 0; i < gw; i++) {
+        const x = i - M - 1;
+        if (Math.min(x, y, hole.W - x, hole.L - y) > 15) continue;
+        const k = j * gw + i;
+        grid[k] = elev(x, y);
+        mixG[k] = clamp(0.5 + noise.fbm(x / 45, y / 45, 3) * 1.4, 0, 1);
+        mottG[k] = noise.value(x / 7, y / 7) * 0.05;
+      }
+    }
+    const sample = (G, x, y) => {
+      const u = clamp(x + M + 1, 0, gw - 1.001), v = clamp(y + M + 1, 0, gh - 1.001);
+      const i = u | 0, j = v | 0, fu = u - i, fv = v - j, k = j * gw + i;
+      return lerp(lerp(G[k], G[k + 1], fu), lerp(G[k + gw], G[k + gw + 1], fu), fv);
+    };
+    const elevAt = (x, y) => sample(grid, x, y);
+    const inv = 1 / ppm;
+    for (let py = 0; py < ch; py++) {
+      const y = (py + 0.5) * inv - M;
+      for (let px = 0; px < cw; px++) {
+        const x = (px + 0.5) * inv - M;
+        // Only needed outside the hole and under its feathered edge.
+        const inside = Math.min(x, y, hole.W - x, hole.L - y);
+        if (inside > 12) continue;
+        const k = sample(mixG, x, y);
+        const r = lerp(oob[0], deep[0], k), g = lerp(oob[1], deep[1], k), b = lerp(oob[2], deep[2], k);
+        const gx = (elevAt(x + 0.6, y) - elevAt(x - 0.6, y)) / 1.2;
+        const gy = (elevAt(x, y + 0.6) - elevAt(x, y - 0.6)) / 1.2;
+        let shade = 0.94 + clamp((gx + gy) * 2.2, -0.28, 0.28);
+        shade += sample(mottG, x, y) + noise.value(x / 1.7, y / 1.7) * 0.025;
+        shade += (hash2((x * 5) | 0, (y * 5) | 0, 7) - 0.5) * 0.05;
+        const o = (py * cw + px) * 4;
+        data[o] = clamp(r * shade, 0, 255);
+        data[o + 1] = clamp(g * shade, 0, 255);
+        data[o + 2] = clamp(b * shade, 0, 255);
+        data[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+
+    // Trees: the hole's own kinds, in clumps where the far surround shows its dark tree patches.
+    const pool = hole.trees.filter((t) => !t.lava);
+    if (pool.length) {
+      const rng = new Golf.RNG((hole.seed ^ 0x7ee5) >>> 0);
+      const density = clamp(pool.length / (hole.W * hole.L), 0.0008, 0.02) * 1.6;
+      const trees = [];
+      const n = Math.round(w * h * density);
+      for (let i = 0; i < n * 3 && trees.length < n; i++) {
+        const x = rng.float(-M, hole.W + M), y = rng.float(-M, hole.L + M);
+        if (x > 2 && y > 2 && x < hole.W - 2 && y < hole.L - 2) continue;
+        const clump = smoothstep(0.0, 0.3, noise.fbm(x / 20 + 31, y / 20 - 17, 2));
+        if (rng.next() > 0.15 + 0.85 * clump) continue;
+        const src = rng.pick(pool);
+        trees.push({ ...src, x, y, tint: rng.float(-1, 1), r: src.r * rng.float(0.85, 1.15) });
+      }
+      trees.sort((a, b) => a.y - b.y);
+      ctx.setTransform(ppm, 0, 0, ppm, M * ppm, M * ppm);
+      ctx.fillStyle = 'rgba(10,40,10,0.28)';
+      for (const t of trees) {
+        ctx.beginPath();
+        ctx.ellipse(t.x + t.h * 0.22, t.y + t.h * 0.18, t.r * 1.05, t.r * 0.9, 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const bid = hole.biome ? hole.biome.id : 'parkland';
+      for (const t of trees) drawTree(ctx, t, bid);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    const layer = { canvas, x0: -M, y0: -M, w, h, ppm };
+    // Dissolve the outer part of the band into the soft distance.
+    featherEdges(layer, M * 0.75);
+    return layer;
   }
 
   // Beyond the mapped hole: a low-detail, soft-focus landscape (2 m pixels, smoothed when scaled up).
@@ -469,6 +578,8 @@
     ctx.fillRect(0, 0, c.width, c.height);
     const S = layer.surround;
     if (S) ctx.drawImage(S.canvas, -S.x0 * S.ppm, -S.y0 * S.ppm, hole.W * S.ppm, hole.L * S.ppm, 0, 0, c.width, c.height);
+    const N = layer.near;
+    if (N) ctx.drawImage(N.canvas, -N.x0 * N.ppm, -N.y0 * N.ppm, hole.W * N.ppm, hole.L * N.ppm, 0, 0, c.width, c.height);
     ctx.drawImage(layer.main ? layer.main.canvas : layer.canvas, 0, 0, c.width, c.height);
     return { canvas: c, scale: s };
   }
@@ -622,6 +733,8 @@
       ctx.imageSmoothingEnabled = true;
       const S = game.layers.surround;
       if (S) ctx.drawImage(S.canvas, S.x0, S.y0, S.w, S.h);
+      const N = game.layers.near;
+      if (N) ctx.drawImage(N.canvas, N.x0, N.y0, N.w, N.h);
       const L = game.layers.main;
       ctx.drawImage(L.canvas, L.x0, L.y0, L.w, L.h);
       if (game.layers.green && cam.scale > 2.5) {
@@ -1044,5 +1157,5 @@
     ctx.restore();
   }
 
-  Golf.render = { displayHeight, Renderer, buildHoleLayers, buildGreenLayer, buildMinimap, drawMinimap, drawWind, ZK };
+  Golf.render = { displayHeight, Renderer, buildHoleLayers, buildGreenLayer, buildNearBand, buildMinimap, drawMinimap, drawWind, ZK };
 })();

@@ -148,6 +148,11 @@
       const idle = window.requestIdleCallback || ((f) => setTimeout(f, 60));
       idle(() => {
         if (game.hole === hole) game.layers.green = R.buildGreenLayer(hole);
+        idle(() => {
+          if (game.hole !== hole) return;
+          game.layers.near = R.buildNearBand(hole);
+          buildMinimap();
+        });
       });
     }, 40);
   }
