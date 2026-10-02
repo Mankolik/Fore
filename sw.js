@@ -1,7 +1,7 @@
 // Offline support: cache the whole game on first visit, then serve it from the device.
 // Strategy: stale-while-revalidate — instant (and offline) loads from the cache, with a background
 // refresh whenever the network is available, so updates arrive on the next launch.
-const VERSION = 'fore-v11';
+const VERSION = 'fore-v12';
 const ASSETS = [
   './',
   'index.html',

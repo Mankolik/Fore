@@ -66,10 +66,14 @@
     else if (lie === T.DEEP || lie === T.OOB) r = RISK_DEEP[g];
     else if (lie === T.ROUGH) r = RISK_ROUGH[g];
     else if (lie !== T.TEE && g === 'driver') r = 0.22; // driver off the deck
-    if (shot === 'flop') r += TIGHT(lie) ? 0.2 : lie === T.DEEP ? 0.12 : 0.05; // bladed off firm turf
-    if (shot === 'chip' && lie === T.SAND) r += 0.45; // no bounce to slide through the sand
+    if (lie === T.SAND) {
+      // The open-faced splash is what the sand wedges' bounce is built for; a square-faced ¾ digs or skulls.
+      if (shot === 'flop') r *= 0.5;
+      else if (shot === 'three') r += 0.06;
+      else if (shot === 'chip') r += 0.45; // no bounce to slide through the sand
+    } else if (shot === 'flop') r += TIGHT(lie) ? 0.2 : lie === T.DEEP ? 0.12 : 0.05; // bladed off firm turf
     if (shot === 'punch') r *= 0.6;
-    else if (shot === 'three') r *= 0.8;
+    else if (shot === 'three' && lie !== T.SAND) r *= 0.8;
     return Math.min(0.97, r);
   }
   // Full swings: even a perfect strike wanders a little (degrees, sd), and mistimed strikes hurt more
@@ -316,6 +320,7 @@
     const lie = hole.terrainAt(ball.x, ball.y);
     const le = lieEffect(lie, clubIdx);
     ball.hitTrees = new Set();
+    ball.face = null;
     ball.t = 0;
     ball.bounces = 0;
     ball.maxHeight = 0;
@@ -373,6 +378,7 @@
     // it, wedges and soft pitches included; low chips are spared mostly by staying under it (see airStep).
     ball.windK = WIND_K * ENV_WIND;
     ball.gust = { k: Math.max(0.3, 1 + gauss(rand) * 0.22), a: gauss(rand) * 0.14 };
+    ball.face = lie === T.SAND ? bunkerFace(hole, ball.x, ball.y, dir) : null;
     const vh = speed * Math.cos(launchA);
     ball.vx = Math.cos(dir) * vh;
     ball.vy = Math.sin(dir) * vh;
@@ -383,6 +389,22 @@
     ball.z = hole.height(ball.x, ball.y) + 0.02;
     ball.state = 'air';
     return { mishit };
+  }
+
+  // The bunker face the ball must clear on its way out: how far along the line the sand ends, and how
+  // high the lip stands there (absolute height).  Low shots from close to a steep face catch it.
+  function bunkerFace(hole, x, y, dir) {
+    if (!hole.bunkerLip) return null;
+    const lip = hole.bunkerLip(x, y);
+    if (!lip) return null;
+    const dx = Math.cos(dir), dy = Math.sin(dir);
+    for (let d = 0.25; d < 40; d += 0.25) {
+      if (hole.terrainAt(x + dx * d, y + dy * d) === T.SAND) continue;
+      let rim = -Infinity;
+      for (let e = 0; e <= 1; e += 0.25) rim = Math.max(rim, hole.height(x + dx * (d + e), y + dy * (d + e)));
+      return { x, y, dx, dy, d, top: rim + lip };
+    }
+    return null;
   }
 
   // Advance the simulation by `dt` seconds. Returns an array of events.
@@ -432,6 +454,19 @@
     ball.side *= Math.exp(-dt / 7);
     ball.maxHeight = Math.max(ball.maxHeight, agl);
 
+    if (ball.face) {
+      const f = ball.face;
+      if ((ball.x - f.x) * f.dx + (ball.y - f.y) * f.dy >= f.d) {
+        if (ball.z < f.top) {
+          // Into the face: it dies and drops back into the sand.
+          ball.vx *= -0.12; ball.vy *= -0.12; ball.vz = Math.min(ball.vz, 0) * 0.3;
+          ball.x -= f.dx * 0.15; ball.y -= f.dy * 0.15;
+          ball.spin = 0; ball.side = 0;
+          events.push({ type: 'face', x: ball.x, y: ball.y, z: ball.z });
+        }
+        ball.face = null;
+      }
+    }
     treeCollideAir(ball, hole, events, rand);
     trackDry(ball, hole);
 
