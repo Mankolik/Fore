@@ -303,8 +303,8 @@
       const club = chipPlan(dist);
       if (club != null) return { club, shot: 'chip' };
     }
-    // Flop over trouble from grass; from sand the ¾ splash with a sand wedge is the percentage play.
-    const overTrouble = lie !== T.SAND && !sampleLine(b, pin, (t) => !HAZARD(t));
+    // Flop over trouble from grass; from a greenside bunker the open-faced splash (a flop) is the play.
+    const overTrouble = lie === T.SAND || !sampleLine(b, pin, (t) => !HAZARD(t));
     const longest = longestClub();
     // Tightest option that reaches the flag, steering clear of clubs likely to be mishit from this lie.
     for (const maxRisk of [0.3, 1]) {
@@ -693,6 +693,11 @@
           break;
         case 'trunk':
           audio.play('trunk');
+          break;
+        case 'face':
+          audio.play('sand');
+          spray(ev.x, ev.y, surfaceColor(T.SAND), 16, 2.5, 3);
+          notify('Caught the lip! Too low to clear the bunker face', { key: 'event', level: 'warn', ms: 4000, pri: 2 });
           break;
         case 'water':
           audio.play('splash');

@@ -19,8 +19,8 @@ Updates download in the background when you're online and apply on the next laun
 
 ## Play
 
-Live at **https://mankolik.github.io/Golfy/**. GitHub Pages serves the `gh-pages` branch,
-so publish updates with `git push origin main:gh-pages`. Share a course by its seed:
+Live at **https://mankolik.github.io/Golfy/**. GitHub Pages serves the `main` branch, so
+merging is publishing. Share a course by its seed:
 `https://mankolik.github.io/Golfy/?seed=heron7`. To run it locally, serve the folder with any
 static web server.
 

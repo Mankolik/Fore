@@ -130,6 +130,12 @@
       if (bl(this.fDeep) > 0) return T.DEEP;
       return T.ROUGH;
     }
+    // Height of the bunker face above its rim (m) for the bunker at (x, y): steep, lipped greenside and pot
+    // bunkers; shallow fairway bunkers.
+    bunkerLip(x, y) {
+      for (const b of this.bunkers) if (blobSdf(b, x, y) < 0.5) return b.lip ?? 0.2;
+      return 0;
+    }
     treesNear(x, y) {
       const cs = this.treeCell;
       const ci = Math.floor(x / cs), cj = Math.floor(y / cs);
@@ -226,19 +232,19 @@
     hole.approachDir = { x: endP.dx, y: endP.dy };
     const greenExtR = greenR * green.sx * 1.15;
 
-    // Green complex: raised greens with run-off banks, two tiers, grass hollows around the edge.
+    // Green complex: raised greens with run-off banks, the odd gentle two-tier green, grass hollows around the edge.
     const style = { raise: 0, bank: rng.float(4, 7), tier: null, hollows: [] };
     if (rng.chance(0.4)) style.raise = rng.float(0.8, 2.0);
-    if (rng.chance(0.35)) {
+    if (rng.chance(0.18)) {
       const a = rng.float(0, Math.PI * 2);
-      style.tier = { nx: Math.cos(a), ny: Math.sin(a), off: rng.float(-0.3, 0.3) * greenR, h: rng.float(0.4, 0.75) * rng.sign() };
+      style.tier = { nx: Math.cos(a), ny: Math.sin(a), off: rng.float(-0.3, 0.3) * greenR, h: rng.float(0.25, 0.45) * rng.sign() };
     }
     for (let i = 0, n = rng.int(0, 2); i < n; i++) {
       const a = rng.float(0, Math.PI * 2), d = greenExtR + rng.float(3, 7);
       style.hollows.push({ x: green.cx + Math.cos(a) * d, y: green.cy + Math.sin(a) * d, r: rng.float(4, 6.5), depth: rng.float(0.5, 1.0) });
     }
     hole.greenStyle = style;
-    const onTierSlope = (x, y) => style.tier && Math.abs((x - green.cx) * style.tier.nx + (y - green.cy) * style.tier.ny - style.tier.off) < 2.6;
+    const onTierSlope = (x, y) => style.tier && Math.abs((x - green.cx) * style.tier.nx + (y - green.cy) * style.tier.ny - style.tier.off) < 3.6;
 
     // Pin somewhere comfortably inside the green.
     let pin = null;
@@ -258,7 +264,9 @@
       const R = rng.float(3.5, 6);
       const gr = greenR * 1.05;
       const d = gr + R * 0.9 + 2.5;
-      bunkers.push(makeBlob(rng, green.cx + Math.cos(ang) * d, green.cy + Math.sin(ang) * d, R, { sx: rng.float(1.4, 2.0), rot: ang + Math.PI / 2, wobble: 0.2 }));
+      const gb = makeBlob(rng, green.cx + Math.cos(ang) * d, green.cy + Math.sin(ang) * d, R, { sx: rng.float(1.4, 2.0), rot: ang + Math.PI / 2, wobble: 0.2 });
+      gb.lip = 0.45;
+      bunkers.push(gb);
     }
     // Small, deep pot bunkers hugging the green.
     for (let i = 0, n = rng.chance(bg.potBunkers ? 0.85 : 0.45) ? rng.int(1, 3) : 0; i < n; i++) {
@@ -267,6 +275,7 @@
       const d = greenExtR + R + rng.float(0.8, 2);
       const pot = makeBlob(rng, green.cx + Math.cos(ang) * d, green.cy + Math.sin(ang) * d, R, { sx: rng.float(1, 1.25), wobble: 0.1 });
       pot.depth = rng.float(1.0, 1.4);
+      pot.lip = 0.4;
       bunkers.push(pot);
     }
     if (par >= 4) {
@@ -482,7 +491,7 @@
           if (style.raise) h += style.raise * (1 - smoothstep(-0.5, style.bank, fGreen[k]));
           if (style.tier) {
             const tt = (x - green.cx) * style.tier.nx + (y - green.cy) * style.tier.ny - style.tier.off;
-            h += style.tier.h * (smoothstep(-1.8, 1.8, tt) - 0.5) * (1 - smoothstep(-1, 10, fGreen[k]));
+            h += style.tier.h * (smoothstep(-3, 3, tt) - 0.5) * (1 - smoothstep(-1, 10, fGreen[k]));
           }
         }
         for (const hw of style.hollows) {
