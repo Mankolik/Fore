@@ -9,9 +9,10 @@
     canvas: $('game'), minimap: $('minimap'), wind: $('wind-canvas'),
     holeTitle: $('hole-title'), holeSub: $('hole-sub'), stroke: $('stroke-label'), score: $('score-label'),
     windLabel: $('wind-label'), lie: $('lie-label'), dist: $('dist-label'), info: $('info-strip'),
-    toast: $('toast'), controls: $('controls'), swing: $('swing-btn'),
+    toast: $('toast'), controls: $('controls'), swing: $('swing-btn'), swingZone: $('swing-zone'),
     clubTitle: $('club-title'), clubDist: $('club-dist'), clubPrev: $('club-prev'), clubNext: $('club-next'),
     aimLeft: $('aim-left'), aimRight: $('aim-right'),
+    records: $('records'), recordsBody: $('records-body'), btnRecords: $('btn-records'), btnRecordsClose: $('btn-records-close'),
     menu: $('menu'), seed: $('seed-input'), dice: $('btn-dice'), preview: $('course-preview'), play: $('btn-play'),
     continueWrap: $('continue-wrap'), continueBtn: $('btn-continue'), continueInfo: $('continue-info'),
     loading: $('loading'), scorecard: $('scorecard'), scTitle: $('sc-title'), scCourse: $('sc-course'),
@@ -29,6 +30,8 @@
   const TOP_ANGLE = 3.7; // club angle at the top of a full backswing (radians)
   const MAX_STROKES = 10;
   const SAVE_KEY = 'golfy.save.v1';
+  const ROUNDS_KEY = 'golfy.rounds.v1';
+  const MAX_ROUNDS = 300;
 
   const game = {
     course: null, holeIdx: 0, hole: null, layers: null, minimap: null,
@@ -812,6 +815,7 @@
       if (game.strokes <= hole.par) audio.play('good');
     }
     save();
+    if (game.scores.filter((s) => s != null).length === 9) recordRound();
     setTimeout(() => {
       if (game.phase !== 'holeDone') return;
       showScorecard(true);
@@ -947,6 +951,8 @@
     }
     const enabled = ['aim', 'backswing', 'downswing', 'flight'].includes(game.phase);
     if (els.swing.disabled === enabled) els.swing.disabled = !enabled;
+    const zone = game.phase === 'backswing' || game.phase === 'downswing';
+    if (els.controls.classList.contains('swinging') !== zone) els.controls.classList.toggle('swinging', zone);
     const clubOk = game.phase === 'aim';
     if (els.clubPrev.disabled === clubOk) {
       els.clubPrev.disabled = els.clubNext.disabled = !clubOk;
@@ -1125,6 +1131,23 @@
 
   // ---------------------------------------------------------------------------------------------
   // Scorecard
+  // Hole / Par / Score rows for a scorecard table.
+  function scoreRows(pars, scores) {
+    const row = (label, cells, cls = '') => `<tr class="${cls}"><th>${label}</th>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+    const holes = pars.map((_, i) => i + 1);
+    const scoreCells = pars.map((p, i) => {
+      const s = scores[i];
+      if (s == null) return '·';
+      const d = s - p;
+      const cls = d <= -2 ? 'eagle' : d === -1 ? 'birdie' : d === 1 ? 'bogey' : d >= 2 ? 'double' : '';
+      return `<span class="sc ${cls}">${s}</span>`;
+    });
+    const parTotal = pars.reduce((a, b) => a + b, 0);
+    const played = scores.some((s) => s != null);
+    const total = scores.reduce((a, s) => a + (s || 0), 0);
+    return row('Hole', [...holes, 'Tot']) + row('Par', [...pars, parTotal]) + row('Score', [...scoreCells, played ? total : '·']);
+  }
+
   function showScorecard(afterHole) {
     if (!game.course) return;
     const pars = game.course.pars;
@@ -1135,18 +1158,7 @@
     const total = game.scores.reduce((a, s) => a + (s || 0), 0);
     const played = game.scores.filter((s) => s != null).length;
     els.scResult.textContent = played ? `${total} strokes · ${fmtDiff(diff)}` : '';
-    const row = (label, cells, cls = '') => `<tr class="${cls}"><th>${label}</th>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
-    const holes = pars.map((_, i) => i + 1);
-    const scoreCells = pars.map((p, i) => {
-      const s = game.scores[i];
-      if (s == null) return '·';
-      const d = s - p;
-      const cls = d <= -2 ? 'eagle' : d === -1 ? 'birdie' : d === 1 ? 'bogey' : d >= 2 ? 'double' : '';
-      return `<span class="sc ${cls}">${s}</span>`;
-    });
-    const parTotal = pars.reduce((a, b) => a + b, 0);
-    els.scTable.innerHTML =
-      row('Hole', [...holes, 'Tot']) + row('Par', [...pars, parTotal]) + row('Score', [...scoreCells, played ? total : '·']);
+    els.scTable.innerHTML = scoreRows(pars, game.scores);
     els.scButtons.innerHTML = '';
     const btn = (text, cls, fn) => {
       const b = document.createElement('button');
@@ -1197,8 +1209,57 @@
     return null;
   }
 
+  // Completed rounds, kept for the best / worst list on the main menu.
+  function loadRounds() {
+    try {
+      const r = JSON.parse(localStorage.getItem(ROUNDS_KEY));
+      if (Array.isArray(r)) return r.filter((x) => x && typeof x.seed === 'string' && Array.isArray(x.scores) && Array.isArray(x.pars));
+    } catch (e) { /* ignore */ }
+    return [];
+  }
+  function recordRound() {
+    const c = game.course;
+    const total = game.scores.reduce((a, s) => a + s, 0);
+    const rounds = loadRounds();
+    rounds.push({ seed: c.seed, name: c.name, icon: c.biome.icon, biome: c.biome.name, pars: c.pars.slice(), scores: game.scores.slice(), total, diff: totalVsPar(), date: Date.now() });
+    try { localStorage.setItem(ROUNDS_KEY, JSON.stringify(rounds.slice(-MAX_ROUNDS))); } catch (e) { /* storage unavailable */ }
+  }
+  function showRecords() {
+    const rounds = loadRounds();
+    const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+    const fmtDate = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const entry = (r, rank) => `<details class="rec">
+        <summary><span class="rec-rank">${rank}</span><span class="rec-main"><b>${esc(r.icon || '')} ${esc(r.name)}</b><small>seed “${esc(r.seed)}” · ${fmtDate(r.date)}</small></span><span class="rec-score">${fmtDiff(r.diff)}<small>${r.total}</small></span></summary>
+        <div class="table-wrap"><table class="sc-table">${scoreRows(r.pars, r.scores)}</table></div>
+        <button class="secondary rec-play" data-seed="${esc(r.seed)}">Play this course again</button>
+      </details>`;
+    let html;
+    if (!rounds.length) html = '<p class="muted">No finished rounds yet. Complete all 9 holes and your score lands here.</p>';
+    else {
+      // Lower is better; on a tie the earlier round keeps the better spot.
+      const sorted = rounds.slice().sort((a, b) => a.diff - b.diff || a.date - b.date);
+      const n = Math.min(5, Math.ceil(sorted.length / 2));
+      const best = sorted.slice(0, n);
+      const worst = sorted.slice(sorted.length - Math.min(5, sorted.length - n)).reverse();
+      html = `<p class="muted small">${rounds.length} round${rounds.length > 1 ? 's' : ''} played · tap a round for its scorecard</p>`;
+      html += `<h3>🏆 Best</h3>${best.map((r, i) => entry(r, i + 1)).join('')}`;
+      if (worst.length) html += `<h3>💀 Worst</h3>${worst.map((r, i) => entry(r, i + 1)).join('')}`;
+    }
+    els.recordsBody.innerHTML = html;
+    for (const b of els.recordsBody.querySelectorAll('.rec-play')) {
+      b.addEventListener('click', () => {
+        audio.unlock();
+        els.records.classList.add('hidden');
+        clearSave();
+        startRound(b.dataset.seed);
+      });
+    }
+    els.records.classList.remove('hidden');
+  }
+
   function showMenu() {
     els.scorecard.classList.add('hidden');
+    els.records.classList.add('hidden');
     const saved = loadSave();
     if (game.inRound && game.hole) {
       els.continueWrap.classList.remove('hidden');
@@ -1279,19 +1340,22 @@
     game.userZoom = clamp(game.userZoom * Math.exp(-e.deltaY * 0.0015), 0.3, 5);
   }, { passive: false });
 
-  els.swing.addEventListener('pointerdown', (e) => {
+  const swingDown = (e) => {
     e.preventDefault();
-    try { els.swing.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     els.swing.classList.add('pressed');
     pressSwing();
-  });
+  };
   const swingUp = () => {
     els.swing.classList.remove('pressed');
     releaseSwing();
   };
-  els.swing.addEventListener('pointerup', swingUp);
-  els.swing.addEventListener('pointercancel', swingUp);
-  els.swing.addEventListener('contextmenu', (e) => e.preventDefault());
+  for (const el of [els.swing, els.swingZone]) {
+    el.addEventListener('pointerdown', swingDown);
+    el.addEventListener('pointerup', swingUp);
+    el.addEventListener('pointercancel', swingUp);
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
 
   const holdAim = (btn, dir) => {
     btn.addEventListener('pointerdown', (e) => {
@@ -1422,6 +1486,8 @@
     clearSave();
     startRound(seed);
   });
+  els.btnRecords.addEventListener('click', showRecords);
+  els.btnRecordsClose.addEventListener('click', () => els.records.classList.add('hidden'));
   els.continueBtn.addEventListener('click', () => {
     audio.unlock();
     if (game.inRound && game.hole) {

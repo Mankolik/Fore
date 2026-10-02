@@ -296,6 +296,9 @@ button {
 }
 #swing-btn:active, #swing-btn.pressed { transform: translateY(3px); box-shadow: 0 1px 0 #8e700a, 0 3px 10px rgba(0, 0, 0, 0.35); }
 #swing-btn:disabled { filter: grayscale(0.7) brightness(0.8); }
+/* Invisible, enlarged hit area for the swing: only live mid-swing, when clubs and shots are locked anyway. */
+#controls > #swing-zone { position: absolute; left: 0; right: 0; top: -36px; bottom: 0; pointer-events: none; touch-action: none; }
+#controls.swinging > #swing-zone { pointer-events: auto; }
 
 /* ---- Overlays ---- */
 .overlay {
@@ -309,7 +312,7 @@ button {
   z-index: 10;
   overflow-y: auto;
 }
-#menu { background: radial-gradient(ellipse at top, #3f7a34, #173214 75%); }
+#menu, #records { background: radial-gradient(ellipse at top, #3f7a34, #173214 75%); }
 .card {
   width: 100%;
   max-width: 400px;
@@ -382,16 +385,30 @@ details li { margin-bottom: 6px; line-height: 1.35; }
 /* ---- Scorecard ---- */
 #sc-result { font-size: 20px; font-weight: 800; margin-bottom: 10px; }
 .table-wrap { overflow-x: auto; margin: 0 -6px 12px; }
-#sc-table { border-collapse: collapse; width: 100%; font-size: 14px; text-align: center; }
-#sc-table th, #sc-table td { padding: 6px 3px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); min-width: 26px; }
-#sc-table th:first-child, #sc-table td:first-child { text-align: left; color: var(--muted); font-weight: 600; }
-#sc-table .cur { background: rgba(255, 214, 64, 0.15); }
+.sc-table { border-collapse: collapse; width: 100%; font-size: 14px; text-align: center; }
+.sc-table th, .sc-table td { padding: 6px 3px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); min-width: 26px; }
+.sc-table th:first-child, .sc-table td:first-child { text-align: left; color: var(--muted); font-weight: 600; }
+.sc-table .cur { background: rgba(255, 214, 64, 0.15); }
 .sc { display: inline-block; min-width: 24px; line-height: 20px; padding: 1px 2px; }
 .sc.eagle { border: 2px double #ff8a80; border-radius: 50%; }
 .sc.birdie { border: 1.5px solid #ff8a80; border-radius: 50%; }
 .sc.bogey { border: 1.5px solid #9ec9ff; }
 .sc.double { border: 2px double #9ec9ff; }
 .btn-row { display: flex; flex-direction: column; gap: 4px; }
+
+/* ---- Best / worst rounds ---- */
+#records h3 { margin: 16px 0 6px; font-size: 17px; }
+details.rec { margin: 0 0 6px; color: var(--text); font-size: 15px; background: rgba(255, 255, 255, 0.06); border-radius: 12px; }
+details.rec summary { display: flex; align-items: center; gap: 10px; padding: 8px 10px; list-style: none; }
+details.rec summary::-webkit-details-marker { display: none; }
+details.rec[open] summary { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.rec-rank { flex: 0 0 18px; color: var(--muted); font-weight: 700; text-align: right; }
+.rec-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rec-main b, .rec-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-main small, .rec-score small { color: var(--muted); font-weight: 400; font-size: 12px; }
+.rec-score { display: flex; flex-direction: column; align-items: flex-end; font-weight: 800; font-size: 18px; }
+details.rec .table-wrap { margin: 6px 4px 4px; }
+details.rec .rec-play { width: calc(100% - 16px); margin: 0 8px 8px; font-size: 14px; padding: 9px; }
 
 @media (min-width: 700px) {
   #hole-panel { min-width: 170px; }
