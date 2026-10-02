@@ -125,7 +125,7 @@
       game.hole = hole;
       game.layers = R.buildHoleLayers(hole);
       buildMinimap();
-      for (const k of ['result', 'strike', 'event', 'lie', 'swing']) dismiss(k);
+      for (const k of ['result', 'strike', 'event', 'lie', 'tree', 'swing']) dismiss(k);
       game.ball = P.createBall(hole.tee.x, hole.tee.y, hole);
       game.strokes = 0;
       game.trail = [];
@@ -180,7 +180,44 @@
     game.golfer = { x: b.x, y: b.y, aim: game.aim };
     game.carryShown = false;
     updateClub();
+    planAroundTrees();
     updateHud();
+  }
+
+  // If the suggested shot would fly into a tree, look for a punch that stays under the branches and
+  // suggest it; otherwise warn that the line is blocked.
+  function planAroundTrees() {
+    if (game.shot === 'putt' || game.shot === 'chip') return;
+    const b = game.ball, hole = game.hole, lie = game.lie;
+    const dist = distToPin();
+    // Cheap check first: is any tree canopy near the first stretch of the line at all?
+    const ca = Math.cos(game.aim), sa = Math.sin(game.aim);
+    let near = false;
+    for (let d = 4; d < Math.min(dist, 140) && !near; d += 8) {
+      for (const t of hole.treesNear(b.x + ca * d, b.y + sa * d)) {
+        const along = (t.x - b.x) * ca + (t.y - b.y) * sa;
+        if (along > 0 && Math.abs((t.x - b.x) * sa - (t.y - b.y) * ca) < t.r + 0.5) { near = true; break; }
+      }
+    }
+    if (!near) return;
+    const line = (club, shot, power) => P.simulateLine(hole, b.x, b.y, game.aim, club, shot, lie, power, true);
+    if (!line(game.clubIdx, game.shot, Math.min(game.pinPower ?? 1, 1)).tree) return;
+    const clubs = P.clubsFor('punch').filter((i) => P.mishitRisk(i, 'punch', lie) <= 0.35);
+    const need = (i) => dist / fullDist(i, 'punch', lie).metric; // the meter is linear in distance
+    // Tightest punch that reaches the flag and stays clear; failing that, the longest one that's clear.
+    let pick = null;
+    for (const i of clubs.slice().reverse()) {
+      if (need(i) <= 1 && !line(i, 'punch', need(i)).tree) { pick = i; break; }
+    }
+    if (pick == null) pick = clubs.find((i) => need(i) > 1 && !line(i, 'punch', 1).tree) ?? null;
+    if (pick == null) {
+      notify('Tree in your line — aim around it', { key: 'tree', level: 'warn', ms: 0, pri: 2 });
+      return;
+    }
+    game.shot = 'punch';
+    game.clubIdx = pick;
+    updateClub();
+    notify(`Tree in your line — punch selected to keep it low`, { key: 'tree', level: 'warn', ms: 0, pri: 2 });
   }
 
   // Not every lie is equal: flyers, balls sitting down, divots and plugged lies.  They are shown to the
@@ -513,6 +550,7 @@
     const lie = game.lie;
     const res = P.launch(b, game.hole, game.clubIdx, game.lockedPower, game.error, game.aim, game.putterRange, game.shot, Math.random, game.lieCond);
     dismiss('lie');
+    dismiss('tree');
     if (res && res.mishit) {
       notify(MISHIT_TEXT[res.mishit], { key: 'strike', level: 'bad', ms: 5500, pri: 3 });
       if (navigator.vibrate) try { navigator.vibrate([30, 40, 30]); } catch (e) { /* ignore */ }

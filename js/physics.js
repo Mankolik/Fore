@@ -251,7 +251,7 @@
   // Simulate a calm shot along the real line of play: it knows which grass the ball lands and rolls on and
   // whether the line runs uphill or downhill (what a player sees), but not the side-slopes, so break is
   // left for the player to read from the slope arrows.
-  function simulateLine(hole, x, y, aim, clubIdx, shot, lie, power) {
+  function simulateLine(hole, x, y, aim, clubIdx, shot, lie, power, withTrees = false) {
     const p = shotParams(clubIdx, shot);
     const le = lieEffect(lie, clubIdx);
     const ca = Math.cos(aim), sa = Math.sin(aim);
@@ -263,7 +263,7 @@
         const t = tOf(px, py), d = (alongH(t + 0.5) - alongH(t - 0.5)) / 1.0;
         return { x: d * ca, y: d * sa };
       },
-      treesNear: () => [], wind: { x: 0, y: 0, speed: 0 }, pin: { x: 1e9, y: 1e9 },
+      treesNear: withTrees ? (px, py) => hole.treesNear(px, py) : () => [], wind: { x: 0, y: 0, speed: 0 }, pin: { x: 1e9, y: 1e9 },
       terrainAt: (px, py) => hole.terrainAt(px, py),
     };
     const a = ((p.launch + (lie === T.SAND ? 4 : 0)) * Math.PI) / 180;
@@ -277,13 +277,17 @@
     b.z = alongH(0) + 0.001;
     b.state = 'air';
     b.lastDry = { x, y };
-    let land = null;
+    let land = null, tree = null;
+    const still = () => 0.5;
     for (let i = 0; i < 2000 && b.state === 'air' || (b.state === 'roll' && i < 2000); i++) {
-      for (const e of step(b, flat, 1 / 30)) if (e.type === 'bounce' && !land) land = { x: e.x, y: e.y };
+      for (const e of step(b, flat, 1 / 30, still)) {
+        if (e.type === 'bounce' && !land) land = { x: e.x, y: e.y };
+        if ((e.type === 'tree' || e.type === 'trunk') && !tree && !land) tree = { x: e.x, y: e.y };
+      }
     }
     const along = (px, py) => (px - x) * Math.cos(aim) + (py - y) * Math.sin(aim);
     land = land || { x: b.x, y: b.y };
-    return { carry: along(land.x, land.y), total: along(b.x, b.y), land, water: b.state === 'water' };
+    return { carry: along(land.x, land.y), total: along(b.x, b.y), land, water: b.state === 'water', tree };
   }
   // Power needed for a bump-and-run to finish at `dist`, reading the grass along the line.
   function powerToReach(hole, x, y, aim, clubIdx, shot, lie, dist) {

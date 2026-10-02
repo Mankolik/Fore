@@ -553,6 +553,26 @@
         styleTree(t, kind, brng);
       }
     }
+    // Now and then a lone tree stands in the fairway where drives land: play around it, over it, or
+    // punch under it.  Own random stream, so the rest of a seed's layout is unchanged.
+    const frng = new RNG((seed ^ 0xfa17e3) >>> 0);
+    if (par >= 4 && frng.chance(par === 5 ? 0.45 : 0.3)) {
+      const S = hole.length;
+      for (let tries = 0; tries < 30; tries++) {
+        const p = pointAt(path, S * frng.float(0.45, 0.75));
+        const off = frng.float(-6, 6);
+        const tx = p.x - p.dy * off, ty = p.y + p.dx * off;
+        const S_ = (f) => hole.sampleIdx(f, tx, ty);
+        if (S_(fFair) > -2 || S_(fGreen) < 45 || S_(fSand) < 8 || S_(fWater) < 10 || S_(fTee) < 60) continue;
+        const kind = FAIRWAY_TREE[biome.id] || 'oak';
+        const t = makeTree(frng, tx, ty, kind === 'pine' ? frng.float(3, 3.8) : frng.float(4, 5.5), kind === 'pine');
+        if (kind !== 'oak' && kind !== 'pine') styleTree(t, kind, frng);
+        else t.h = Math.max(t.h, 10);
+        t.fairway = true;
+        trees.push(t);
+        break;
+      }
+    }
     hole.trees = trees;
     hole.treeCell = 12;
     hole.treeGrid = new Map();
@@ -574,6 +594,8 @@
   function makeTree(rng, x, y, r, pine) {
     return { x, y, r, pine, kind: pine ? 'pine' : 'oak', cb: pine ? 0.2 : 0.35, taper: pine, h: pine ? rng.float(11, 18) : rng.float(8, 14), trunk: 0.35, tint: rng.float(-1, 1) };
   }
+  // Lone fairway trees: a kind with a raised canopy, so a low punch can get under it.
+  const FAIRWAY_TREE = { parkland: 'oak', desert: 'palm', alien: 'mushroom', links: 'pine', winter: 'birch', volcanic: 'dead' };
   const TREE_KINDS = {
     cactus: { r: [0.9, 1.6], h: [4, 8], trunk: 0.45, cb: 0.05, taper: false },
     palm: { r: [2.6, 4], h: [9, 14], trunk: 0.3, cb: 0.75, taper: false },

@@ -30,6 +30,7 @@ for (const seed of seeds) {
     const lens = { 3: [85, 210], 4: [245, 420], 5: [440, 545] }[h.par].map((v) => v * c.biome.gen.lengthK);
     check(h.length >= lens[0] - 1 && h.length <= lens[1] + 1, `${tag}: par ${h.par} length ${h.length.toFixed(0)}`);
     for (const t of h.trees) {
+      if (t.fairway) continue; // the occasional lone fairway tree is deliberate
       const terr = h.terrainAt(t.x, t.y);
       check(terr !== T.FAIRWAY && terr !== T.GREEN && terr !== T.WATER && terr !== T.TEE, `${tag}: tree on ${Golf.TERRAIN_NAMES[terr]}`);
     }
