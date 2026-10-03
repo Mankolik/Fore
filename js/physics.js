@@ -531,8 +531,11 @@
     // Gravity along the slope (5/7 for a rolling sphere) and rolling resistance.
     const gx = -G * g.x * (5 / 7), gy = -G * g.y * (5 / 7);
     // Longer grass grabs a slow ball harder; greens stay pure so putts behave predictably.
-    const slowGrip = terr === T.GREEN || terr === T.FRINGE || (ICE && terr === T.WATER) ? 0 : Math.max(0, 1 - sp / 2.5);
-    const fr = surf.roll * G * (1 + slowGrip);
+    // A bunker face is firm and steep: a ball that rolls in trickles down it to the soft, flat floor
+    // instead of stopping right under the lip (rolling up a face, the sand still grabs it).
+    const onFace = terr === T.SAND && Math.hypot(g.x, g.y) > 0.1 && ball.vx * g.x + ball.vy * g.y <= 0;
+    const slowGrip = terr === T.GREEN || terr === T.FRINGE || (ICE && terr === T.WATER) || onFace ? 0 : Math.max(0, 1 - sp / 2.5);
+    const fr = surf.roll * G * (1 + slowGrip) * (onFace ? 0.12 : 1);
     if (sp < 0.04) {
       const slopeA = Math.hypot(gx, gy);
       if (slopeA < fr * 1.3) {
